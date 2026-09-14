@@ -2816,3 +2816,156 @@ UTF-16 records rather than C strings.
       `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
       Stop here for the new module/graphics decision; no success claim,
       other plan task, or platform work is included.
+
+- **2026-09-15 — Task 13 continued: msimg32 drawing exports (finding 26).**
+  The approved module implementation is kit commit **`32b98ba`**
+  (`Runtime: implement msimg32 gradients and transparent blits`). Earlier
+  findings above remain the history of their respective runs.
+
+  26. **Fixed: msimg32 delay-load registration and raster operations.**
+      `runtime/msimg32.cpp` registers `GradientFill` (6 stdcall arguments),
+      `AlphaBlend` and `TransparentBlt` (11 each) through `imports_init`.
+      Gradients use the shared GDI origin, clip and surface/DIB write path;
+      rectangle modes interpolate across exclusive right/bottom bounds,
+      and triangle mode interpolates at pixel centers. Blits scale by
+      nearest neighbor, preserve premultiplied source alpha for source-over,
+      and compare color keys independently of alpha. Source samples are
+      captured before writes. Normal GDI reads remain opaque; an explicit
+      pixel-reader option preserves 32-bit BI_RGB alpha for these operations.
+      No translator change or regeneration was needed.
+
+      New import-level tests first failed because none of the three exports
+      resolved (**24 failed checks**). They now verify the 8x1 gradient
+      endpoints/midpoint, vertical and triangle interpolation, origin/clip,
+      half-alpha red over blue, combined constant/per-pixel alpha, constant-only
+      alpha, scaled color-key copies, bad mesh indices and DCs without storage.
+      The call helper verifies stdcall cleanup. There is no delay-import
+      expectation list in `runtime_tests` to extend. Microsoft's
+      [GradientFill](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-gradientfill),
+      [BLENDFUNCTION](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-blendfunction)
+      and [TransparentBlt](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-transparentblt)
+      documentation informed the layout and alpha handling. The API pages
+      specify TRUE/FALSE, without a specific last-error guarantee for absent
+      storage; the shim explicitly reports `ERROR_INVALID_HANDLE` (6) there
+      and `ERROR_INVALID_PARAMETER` (87) for invalid parameters.
+
+      Clean run `build/task13-run-26-final.log` line **675178** now reports
+      `LoadLibrary("msimg32.dll") -> pseudo module 60010000`, followed by
+      `GetProcAddress`. The external exception `C06D007E` is absent. This
+      proves startup passes the module lookup; the native GDI suite, rather
+      than an observed game `GradientFill` trace, proves the raster outputs.
+
+  27. **New finding: display enumeration rejects an uninitialized dmSize.**
+      Clean run line **675975** calls `EnumDisplaySettingsW`, **675976**
+      loads a resource string, **675977** raises, and **676002** displays
+      `MessageBoxW: List index out of bounds (0) -> default button 1`.
+      Temporary runtime diagnostics in `build/task13-run-27-diagnostic.log`
+      line **675976** record device `\\.\DISPLAY1`, mode **0**, output
+      **`0efff9d8`**, and **dmSize=4**. `enum_settings` requires dmSize >= 220
+      and returns FALSE before filling the record. Its mode source is not
+      reached. The pinned PE's `00bed750` function reserves a 220-byte
+      DEVMODEW at EBP-0xdc but does not initialize it before the call at
+      **`00bed889`**. The empty resolution list is then indexed at zero by
+      **`00bed8f5`**, returning to **`00bed8fa`**; that return address appears
+      in the exception's diagnostic frame chain, followed by `00bec8fc`,
+      `00a063d3`, `00a05fdf`, `00a05f90`, and `00bfeaae`.
+
+      This is not evidence that a particular resolution is missing.
+      [Microsoft's caller contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaysettingsw)
+      requires initialization of dmSize. In contrast,
+      [Wine's implementation](https://github.com/wine-mirror/wine/blob/master/dlls/win32u/sysparams.c)
+      writes the legacy DEVMODEW prefix through dmDisplayFrequency and sets
+      dmSize to the dmICMMethod offset, without checking the incoming size.
+      No Windows execution was available to establish behavior for this
+      malformed input. A compatibility rule for uninitialized dmSize and
+      the supported output extent remains open; no permissive workaround
+      or fabricated mode list was committed.
+
+  28. **New dispatch-policy boundary: computed return is also an entry.**
+      The subsequent stack-address fault persists after msimg32 loads:
+      clean run line **676005** reports
+      `SIGSEGV in guest thread 1: EIP=0effff7c ESP=0effff58 EBP=0080959b`.
+      The handler is reached through a live SEH checkpoint; there is no
+      missing-checkpoint diagnostic or unhandled exception object.
+      Instrumented run line **675989** records landing **`00a063e2`**,
+      registration **`0effff30`**, ESP **`0efff8e4`**, EBP **`0effff4c`**.
+      Line **676038** records the landing returning with EIP **`0effff7c`**,
+      ESP **`0effff6c`**, EBP **`0080959b`**, before the final host fault.
+
+      The generated `fn_00a063e2` calls DoneExcept at **`00a063f7`**, pushes
+      the correctly decoded return **`00a063fc`**, then falls through to
+      `CALL_FN(00a063fc)`. DoneExcept (`0080a480`) pops that return into EDX,
+      restores the saved guest stack and ends in `JMP EDX` at **`0080a4ad`**.
+      **`00a063fc` appears in both the entry table and the call-return table.**
+      Generated `recomp_jump` follows the approved finding-3 rule: dispatch
+      an entry first, and consult call returns only on an entry miss. Thus
+      it executes this epilogue in a nested host frame; on returning,
+      `fn_00a063e2` executes the same epilogue again. This is the generated
+      control-flow explanation for the corrupted return state, not a
+      misdecoded CALL or another speculative-owner pruning problem.
+
+      The existing driver test
+      `test_computed_returns_use_sorted_call_continuations` explicitly
+      requires entry-first ordering and still passes. Ignored reproducer
+      `build/task13_f28_call_return_entry_test.py` supplies a synthetic CALL,
+      a separately admitted INC/RET continuation, and POP EDX/JMP EDX;
+      it proves the continuation occupies both tables and fails the proposed
+      call-return-first assertion (**667 < 140** is false). Choosing whether
+      to prioritize every call return or recognize only the active caller's
+      continuation changes an approved runtime rule and needs a new decision.
+      The test is deliberately not added to the committed passing suite.
+
+  **Validation and retained artifacts (all commands from the game root):**
+
+  - `.venv/bin/python build/task-k1-native.py gdi_tests --verbose
+    > build/task13-f26-gdi-red.log 2>&1`: exit **1**, **85 checks, 24 failures**,
+    CTest `0% tests passed, 1 tests failed out of 1` (before implementation).
+  - The same command to `build/task13-f26-gdi-green.log` and, after formatting,
+    `build/task13-f26-gdi-final.log`: exit **0**, **73 checks, 0 failures**,
+    `100% tests passed, 0 tests failed out of 1`.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f26-runtime.log 2>&1`: exit **0**, **857 checks, 0 failures,
+    1 skipped**, `100% tests passed, 0 tests failed out of 1`. The skip is
+    the data-import assertion because this image imports no data symbols.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f26-python.log 2>&1`: exit **0**, **8 passed in 0.06s**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f26-format.log 2>&1`: exit **0**, `Formatted 269 handwritten
+    source files`. `kit/tools/check_repo.py` passed tracked-source boundaries
+    and documentation links; `kit/tools/check_game_literals.py` and
+    `git -C kit diff --cached --check` exited **0** before the kit commit.
+  - `.venv/bin/python tools/build.py --target headless --jobs 8
+    > build/task13-f26-headless.log 2>&1`: exit **0**, linked `pop_headless`.
+    After temporary diagnostics were removed, the same command to
+    `build/task13-f26-clean-headless.log` also exited **0**. Both retained
+    the pre-existing linker alignment warning. Native helper use is the
+    existing adaptation for the root test wrapper's unsupported `-R` flag;
+    it calls the kit configure/build/test functions without invoking a
+    compiler directly.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-26-final.log 2>&1`:
+    exit **5**, **676,006 lines**, **25 PeekMessageW matches**, **0 frame
+    files**, ending in the SIGSEGV quoted above. The first run with the same
+    switches (`build/task13-run-26.log`) had the same result. The instrumented
+    run also exited **5**; its temporary source patch is retained only in
+    `build/task13-f27-diagnostics.patch`. The kit worktree and final headless
+    binary contain no temporary diagnostic edits.
+  - `.venv/bin/python -m pytest -q
+    kit/tools/recomp/tests/test_translate_driver.py::test_computed_returns_use_sorted_call_continuations
+    > build/task13-f28-existing-policy.log 2>&1`: exit **0**, **1 passed in 0.03s**.
+  - `.venv/bin/python -m pytest -q build/task13_f28_call_return_entry_test.py
+    > build/task13-f28-policy-red.log 2>&1`: exit **1**, **1 failed in 0.09s**
+    at the conflicting dispatch-priority assertion, after table membership
+    and CALL return-address assertions pass. No translator changes were made.
+
+  PE decodes and the verified executable SHA-256 are retained in
+  `build/task13-f27-f28-pe-evidence.txt`; the hash remains
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+  Expected `d3dxof.dll` and `uxtheme.dll` misses still pass, as does the
+  earlier `msctf.dll` miss. The four optional export misses are unchanged.
+  There are no unknown call/jump targets or oversized heap refusals.
+  **Task 13's 600-frame, exit-0 acceptance remains unmet.** The 25 message
+  polls are startup processing, not proof of a sustained TApplication.Run
+  loop. Stop at the new compatibility/dispatch decisions, with no changes
+  to other tasks, game configuration, assets or platforms.
