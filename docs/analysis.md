@@ -229,3 +229,50 @@ UTF-16 records rather than C strings.
   either a Ghidra pass that defines functions at every direct call target
   or the translator accepting them as entries itself. Nothing was compiled;
   `build/translate-probe/gen` is empty.
+- **2026-09-14, executable translated and headless host linked (Task 4).**
+  Kit `siege-delphi` prerequisites `3ca4993` (runtime instruction forms),
+  `20f5235` (x87 forms) and `cac474c` (computed jumps) were already present.
+  The first regeneration still failed on `CMPXCHG8B` and `EMMS`, leaving
+  four literal transfers unresolved, in 44.30 s. Kit `74e4511` adds those
+  two rules and Unicorn cases; `63da563` uses the loaded image base in
+  `symbols.json` and adds it to `translate-report.json`. The nondefault-base
+  driver regression covers both outputs. The CMPXCHG8B oracle case
+  materializes the preceding comparison's flags with `PUSHFD`/`POPFD`:
+  Unicorn otherwise corrupts lazy flags when both instructions execute in
+  one block, whereas stepping them with a flag read preserves them.
+  The case checks both qword comparison outcomes and preservation of the
+  arithmetic flags other than ZF.
+
+  `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8`
+  exited 0 in **112.82 s wall time**, measured with `/usr/bin/time -p`
+  (`build/regenerate.log`); translation itself took **45.28 s**. No further
+  instruction rules, emitter fixes or missing-symbol fixes were needed.
+  `build/recomp/translate-report.json` reports image base **`00800000`**,
+  **30,027** functions considered, **29,200** emitted bodies and **32,594**
+  entry points, including **3,394** alternate entries. The symbols include
+  all **8,906** listed functions. Discovery recovered **21,121** PE blocks,
+  then withdrew **827** guessed blocks whose dispatch went nowhere; it
+  also rejected **3,712** candidates and logged **1,401** speculative
+  recovery errors (the report retains the first 50). These discovery
+  diagnostics are separate from the empty **`failures`**, **`table_gaps`**
+  and **`table_sites_undecoded`** lists. The literal-target gate passed with
+  no unresolved transfers and no `fn_... failed:` lines. This report schema
+  has no `unsupported_instructions` or `unresolved_targets` keys; the empty
+  failure lists and successful gates are the coverage evidence.
+
+  `build/recomp/gen` holds **150 files, 108,085,915 bytes** (`du -sh`: 103M),
+  including 146 function chunks and the dispatch table. The macOS build
+  compiled them and linked **`build/recomp/pop_headless`**, a Mach-O arm64
+  executable. `nm -gU` confirms all **32,594** translated function symbols,
+  including `fn_00bfea40`. There were no compiler errors and one linker
+  warning reducing `__DATA,__common` alignment from `0x8000` to `0x4000`.
+
+  Validation: the two instruction cases failed on unhandled mnemonics
+  before implementation, then `test_translate_insns.py` passed **26**;
+  both image-base cases failed before the fix, then
+  `test_translate_driver.py` passed **9**. `.venv/bin/python tools/test.py`
+  passed **106**, skipped **3**; `.venv/bin/python -m pytest -q tests`
+  passed **4**. Formatting and staged-source boundary checks passed before
+  both kit commits. Logs are under `build/task4-*.log`. No native runtime
+  suite or game execution was attempted; compilation and linking do not
+  establish startup, menu rendering or gameplay.

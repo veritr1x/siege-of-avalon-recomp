@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The executable translates and compiles; `pop_headless` links against the translation (kit `siege-delphi` 63da563).
 - New game repository for Siege of Avalon: Anthology (GOG offline installer
   1.03.1, build 46736) in the shape of majesty-recomp and populous-recomp:
   the kit as the submodule `kit/` (pinned to kit `main` 31f0f24),
