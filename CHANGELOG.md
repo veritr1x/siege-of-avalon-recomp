@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` 4af5a2a preserves pushed RET continuations and keeps
-  speculative SEH bodies prunable; headless regeneration succeeds and
-  initialization advances, then stops at a computed jump inside an unrolled
-  fill routine before the VCL message loop (Task 13).
+- Kit `siege-delphi` a8d0a94 preserves pushed RET continuations, keeps
+  speculative SEH bodies prunable, and dispatches computed jumps within
+  unrolled routines. Headless initialization advances to calendar callbacks;
+  a callback rejected by the alignment heuristic and a later SIGBUS still
+  prevent reaching the VCL message loop (Task 13).
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas

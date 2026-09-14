@@ -789,3 +789,117 @@ UTF-16 records rather than C strings.
   - Formatting, staged source-boundary, game-literal and whitespace checks
     passed before every kit commit/amendment. No generated code, assets,
     run logs or private diagnostic scripts are committed, and nothing is pushed.
+
+
+  **2026-09-14 continuation, after the orchestrator's local computed-jump decision:**
+
+  6. Finding 6 is resolved by kit **a8d0a94**, `Translator: dispatch computed
+     jumps within their own body`. A table-less indirect JMP first checks
+     the current body's range and switches over every instruction boundary;
+     a matching address stays in the same host frame through its local
+     label. Addresses outside the body, and holes or instruction interiors,
+     retain the existing `recomp_jump` entry/call-return/unknown path. Only
+     bodies with a table-less indirect JMP acquire all instruction labels.
+     CFG flag analysis includes these local successors too.
+
+     The private fill reproducer was promoted into the instruction suite,
+     with randomized zero-to-eight-byte fills and a second four-way store
+     sequence selected by `LEA EAX,[base + ECX*4]; JMP EAX`. Both compare
+     registers, flags and scratch bytes against Unicorn. The driver checks
+     every local case and label, the fallback, and absence of the switch
+     from a plain body. The focused red run was **3 failed, 1 passed**;
+     implementation made the complete two focused suites **92 passed**.
+     The broader suite initially found seven old structure-field jump tests
+     expecting no switch at all. Their expectation now follows the approved
+     two-level rule while retaining checks that no jump table was decoded.
+     The final portable suite is **144 passed, 1 skipped**.
+
+     Normal regeneration and the headless link **exit 0**
+     (`build/task13-f6-regenerate.log`). Translation took **125.2 s**:
+     **29,816/30,495 functions**, **38,126 entry points**, **4,028 candidates
+     rejected as data**, 151 chunks. The existing linker section-alignment
+     warning remains. The fresh boot passes the former fill-routine failure
+     and reaches two `EnumCalendarInfoW` calls.
+
+  7. The new log line is
+     `call to unknown target 0082ce68 (ESP=0efffdf4, return=0fdfff00): returning 0`
+     (`build/task13-run-06.log`). The verified caller listing
+     `functions/0082cef8.asm` pushes `0x0082ce68` at `0x0082cfe2` and
+     `0x0082d0c0` before the calendar-enumeration import. The callback has no
+     exported function listing. Direct decoding of the pinned PE shows
+     `55 8b ec` (`PUSH EBP; MOV EBP,ESP`) at that entry, a normal frame and
+     SEH cleanup, and a final `RET 4` at `0x0082cef4`. It is executable code
+     aligned to 8 bytes, not 16, following `MOV EAX,EAX` padding.
+
+     `looks_like_function` and `looks_like_code_start` both require 16-byte
+     alignment, and the callback exceeds the eight-instruction thunk limit.
+     A direct probe returns false for all three predicates and for
+     `plausible_immediate_target(0x0082ce68)`. Consequently the immediate scan
+     skips the callback before recovery, and it has no generated entry.
+     The synthetic ignored regression
+     `build/task13_unaligned_callback_test.py` recovers an equivalent
+     frame-based callback but **fails** its immediate-candidate assertion.
+     There is **no fix commit for finding 7**. Accepting such callbacks needs
+     an approved function-start/admission rule beyond the existing alignment
+     and short-thunk signals; the task stops at that design boundary.
+
+     Later in the same boot, after further locale/string calls, the host
+     **exits 5** with
+     `SIGBUS in guest thread 1: EIP=0080ae6b ESP=0efffbf4 EBP=0efffe10`.
+     `functions/0080ae48.asm` places that guest address in Unicode-string
+     assignment, just before a call to the string-release helper. The cause
+     of this later fault, and whether it depends on the missing callback,
+     remain unproven. Two LLDB attempts stalled at `run` before guest output:
+     the ordinary batch launch and a PTY launch with ASLR left enabled.
+     Both owned debugger/inferior groups were terminated; neither produced
+     a backtrace (`task13-f7-lldb.log`, `task13-f7-lldb-noaslr.log`).
+
+     As directed, `GetLogicalProcessorInformation` and
+     `RtlCompareUnicodeString` remain documented zero-returning misses. The
+     guest proceeds past both. No unhandled Delphi exception was logged, so
+     no exception object was available to decode.
+
+  The exact boot command was:
+  `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+  RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+  build/recomp/pop_headless > build/task13-run-06.log 2>&1`.
+  It retains the **600-frame / 180-second** cap and no thread override.
+  `grep -c 'PeekMessageW\|MsgWaitForMultipleObjectsEx'
+  build/task13-run-06.log` prints **0** (grep exits 1), and the frame
+  directory contains **0 frame files**. Task 13's **600-frame, exit-0
+  acceptance remains unmet**. The pinned executable SHA-256 was freshly
+  verified unchanged.
+
+  Validation from the game repository root (all logs under `build/`):
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py -k 'unrolled or tableless_jump'`:
+    **3 failed, 1 passed, 88 deselected** before implementation
+    (`task13-f6-red.log`).
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py`: **92 passed**
+    (`task13-f6-focused.log`).
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py`:
+    initial **7 failed, 137 passed, 1 skipped** (`task13-f6-portable.log`),
+    then **144 passed, 1 skipped** (`task13-f6-portable-green.log`), retaining
+    the prior corpus exclusions.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f6-regenerate.log 2>&1`: **exit 0**.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f6-runtime.log 2>&1`: **844 checks, 0 failures, 1 skipped**,
+    exit **0**, label `game`.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f6-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`. The existing helper uses the kit build/test wrappers;
+    the current `tools/test.py` CLI has no `-R` option.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f6-config.log 2>&1`: **7 passed**.
+  - `.venv/bin/python -m pytest -q build/task13_unaligned_callback_test.py
+    > build/task13-f7-unaligned-red.log 2>&1`: **1 failed**, the unresolved
+    finding-7 admission regression.
+  - Formatting, staged source-boundary, game-literal and whitespace checks
+    passed before the kit commit. Generated code, assets, logs and diagnostic
+    scripts remain private and ignored; nothing is pushed.
