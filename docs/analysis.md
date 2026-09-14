@@ -1119,3 +1119,183 @@ UTF-16 records rather than C strings.
   - Formatting, staged source-boundary, game-literal and whitespace checks
     passed before each kit commit. Generated output, logs, debugger scripts
     and guest-memory captures remain ignored; nothing is pushed.
+
+
+  **2026-09-14 continuation, after the orchestrator's heap-thunk decision:**
+
+  9. Finding 9 is implemented by kit **f735c5d**, `Runtime: interpret bounded
+     compiler-generated guest thunks`. `runtime/thunks.cpp/.h` decodes at
+     most 16 instructions in guest heap/stack arenas outside the image:
+     relative CALL/JMP, short JMP, PUSH immediate, MOV immediate/register,
+     indirect absolute-memory JMP, and register POP. POP is necessary for
+     the decision's explicitly described `POP ECX` shared stub, although
+     the opcode enumeration omitted it. A successful decode dispatches to a
+     translated entry or trampoline, or returns at a recorded CALL
+     continuation. Both unknown-call and unknown-jump paths use it, so
+     user32's message callbacks use the same mechanism. No guest address
+     is embedded in the runtime recognizer.
+
+     Failed decoding restores trial CPU/stack changes, prints the stopping
+     address and bytes, and retains the existing unknown-target behavior.
+     Native tests cover a heap CALL whose pushed return names its record,
+     the CALL/POP/JMP form, a direct JMP, a heap WNDPROC reached by
+     `SetWindowLongW`/`SendMessageW`, a bounded loop with PUSH rollback, and
+     stack code using the remaining MOV/short-JMP/indirect-JMP forms.
+     The tests first gave **850 checks, 5 failures, 1 skipped**. Routing all
+     test-only unknown image calls through the real fallback then exposed
+     an unrelated TLS test seam expectation; the stand-in keeps its old
+     no-translation behavior while sharing the new thunk execution path.
+     The final runtime suite gives **851 checks, 0 failures, 1 skipped**.
+     The generated-table regression first gave **1 failed, 61 passed**,
+     then **62 passed**; it checks target classification and unknown-jump
+     integration. An initial `-k call_return` selection matched no test
+     (**62 deselected**, exit 5); the full driver suite supplied the actual
+     failing run. The portable translator suite gives **151 passed,
+     1 skipped**, and game-config/literal checks **8 passed**.
+
+  10. **New design boundary: lossless x87 integer copies.** The resource
+      table is correct: RT_STRING block **4096**, language **0**, ID
+      **65532**, payload RVA **0x0049eba2**, contains `Out of memory`.
+      A breakpoint immediately after `LoadStringW` copies it confirms
+      identical text at image VA `0x00c9eba2` and output `0x0effdf64`, with
+      capacity `0x1000` (`build/task13-f10-resource.log`). Those diagnostics
+      used the preceding binary while the thunk regeneration ran. The
+      resource walker and the wide shim did not corrupt these bytes.
+
+      `functions/008107dc.asm` passes the result to Unicode assignment at
+      `0x0080ae48`, which calls the copy routine at `0x00807088`. Its
+      26-byte path uses four `FILD qword` loads and four `FISTP qword`
+      stores, including overlapping final eight-byte chunks. Real x87
+      preserves the full 64-bit integer. The kit converts it to `double`
+      through `x87_int_value`/`fpush` and later `fto_i64`, losing bits above
+      double's 53-bit integer precision. For the first four UTF-16 units,
+      `0x002000740075004f` becomes `0x0020007400750050`: `Out ` becomes `Put `.
+
+      The ignored reproducer `build/task13_fild_copy_test.py` uses the
+      existing instruction suite's native/Unicorn harness. A single
+      FILD/FISTP copy fails with `native 50 unicorn 4f` at the destination.
+      A second case with the actual 26-byte load/store order produces
+      exactly **`Put pf mdlory`**, while Unicorn preserves **`Out of memory`**.
+      Both fail (**2 failed**, `build/task13-f10-copy-red.log`). No passing
+      result is claimed and the failing diagnostic is not committed.
+      Fixing this needs a decision about the existing `double st[8]` x87
+      representation (for example, retaining exact integer payloads across
+      integer-copy operations versus changing the floating representation).
+      No representation change or copy-routine hook was made.
+
+  11. The oversized allocation is traced separately in
+      `build/task13-f10-allocation.log`. At entry to `0x0080ac14`, EAX is
+      **0x1051ff08 = 273,809,160** UTF-16 units and EDX is **0x0088c840**.
+      The caller `0x0080b0a0` read the alleged string length from `[EDX-4]`.
+      This is a **code address**, the continuation after `CALL [ECX+0x10]`
+      at `0x0088c83d`, not a string. Bytes at `0x0088c83c..0x0088c83f`
+      are `08 ff 51 10`, exactly the erroneous length. The allocator asks
+      for `2 * length + 14 = 547,618,334` bytes; its rounded VirtualAlloc
+      request is **547,618,816** bytes. No system-memory, disk-space or
+      resource-size shim directly supplied that number: it came from
+      instruction bytes treated as string metadata. The preceding
+      MultiByteToWideChar call is not assigned blame without evidence.
+      The host chain is `fn_0080ac14 -> fn_0080b0a0 -> fn_0088c94c ->
+      fn_0088cecc -> body_00861ed8`. The earlier pointer/stack corruption
+      that supplied the code address remains unresolved at the x87
+      design boundary.
+
+  12. The teardown addresses were checked before considering more SEH
+      seeds. Neither exact address is in a listed function's exported
+      instruction rows. `0x0080a4ad` is in the recovered RTL helper
+      starting at **0x0080a480**, between listed `0x0080a3bc` and
+      `0x0080a4b0`; its bytes decode to `JMP EDX` after restoring ESP,
+      FS:[0], EBP and calling `0x00809fec`. The target **0x0080a71a** lies
+      in omitted handler code following listed `0x0080a6b8`, between that
+      function's normal jump and its epilogue. Decoding the actual bytes:
+
+      ```text
+      0080a70a  JMP 0080a028
+      0080a70f  CALL 0080a650
+      0080a714  CALL 0080a42c
+      0080a719  CALL 0080a480
+      0080a71e  POP EDI
+      ```
+
+      Thus **0x0080a71a is inside the CALL's displacement**, not a valid
+      new landing instruction. The generated table already has the valid
+      epilogue entry **0x0080a71e**. No speculative landing seed was added;
+      the bad target remains a corrupted-control-flow symptom.
+
+
+  Validation and diagnostic commands for this continuation (all output
+  remains under ignored `build/`):
+
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f9-red.log 2>&1`: **850 checks, 5 failures, 1 skipped**,
+    exit **1**, before implementation.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    > build/task13-f9-driver-red.log 2>&1`: **1 failed, 61 passed**, exit **1**.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f9-green.log 2>&1`: final **851 checks, 0 failures,
+    1 skipped**, exit **0**, label `game`.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    > build/task13-f9-driver-green.log 2>&1`: **62 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f9-portable.log 2>&1`: **151 passed, 1 skipped**,
+    exit **0**, retaining the existing corpus exclusions.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f9-config.log 2>&1`: **8 passed**, exit **0**.
+  - `lldb --batch -s build/task13-f10-resource.lldb -- build/recomp/pop_headless
+    > build/task13-f10-resource.log 2>&1`: **exit 0**, source and shim output
+    both `Out of memory`.
+  - `lldb --batch -s build/task13-f10-allocation.lldb -- build/recomp/pop_headless
+    > build/task13-f10-allocation.log 2>&1`: **exit 0**, captures the invalid
+    string pointer and length before allocation. Both debugger scripts use
+    `process launch --environment RECOMP_MAX_FRAMES=600
+    --environment RECOMP_LOG=2 --environment RECOMP_FRAMES=build/task13-frames
+    --environment RECOMP_PROFILE_DIR=build/task13-profile`.
+  - `.venv/bin/python -m pytest -q build/task13_fild_copy_test.py
+    > build/task13-f10-fild-red.log 2>&1`: initial single-copy reproducer
+    **1 failed**, exit **1**.
+  - `.venv/bin/python -m pytest -q -s build/task13_fild_copy_test.py
+    > build/task13-f10-copy-red.log 2>&1`: expanded reproducer **2 failed**,
+    exit **1**; prints `native copied text 'Put pf mdlory'`.
+  - `.venv/bin/python kit/tools/format.py --write`, staged
+    `kit/tools/check_repo.py`, `kit/tools/check_game_literals.py`, and
+    whitespace checks passed before the kit commit. No private diagnostic
+    scripts, guest bytes, generated code or logs are committed.
+
+
+  The final thunk-enabled regeneration and run are complete:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f9-regenerate.log 2>&1`: **exit 0**. Translation took
+    **338.3 s**, with **33,098/35,540 functions**, **44,613 entry points**,
+    **14,110 candidates rejected as data**, 167 chunks and 21 discovery
+    rounds. The existing linker section-alignment warning remains.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f9-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-09.log 2>&1`: **exit 6**.
+    Both heap WNDPROC misses are gone. The message at `0x00a0f9dd` now
+    reaches the guest window method, which calls `DefWindowProcW` with
+    guest return `0x00a102ba`. The same oversized allocation, later unknown
+    static target `0x008de6f8`, and invalid jump `0x0080a71a` still occur.
+  - `lldb --batch -s build/task13-f9-final-probes.lldb -- build/recomp/pop_headless
+    > build/task13-f9-final-probes.log 2>&1`: **exit 0**, verifying the
+    rebuilt binary. `fn_00884cb4` is reached through `recomp_run_thunk` with
+    **ECX=0x01141fe7**, exactly the record address after the heap CALL, and
+    **ESP=0x0efffcb8**, the original callback stack position. The same run
+    reconfirms correct LoadStringW output and the invalid string pointer
+    **EDX=0x0088c840**, length **EAX=0x1051ff08**.
+
+  **Acceptance remains unmet:** zero `PeekMessageW|MsgWaitForMultipleObjectsEx`
+  log lines, zero frame files, exit 6. No synchronous-thread override or
+  hash bypass was used. The executable's SHA-256 was rechecked and remains
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+  Implementation stops at finding 10's x87 representation decision; the
+  invalid string pointer and teardown target are separately documented,
+  without assigning an unproven common cause. The optional
+  InitializeConditionVariable lookup and the previously approved zero
+  misses remain unchanged. Nothing is pushed.
