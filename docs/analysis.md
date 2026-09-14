@@ -3564,3 +3564,168 @@ UTF-16 records rather than C strings.
   **Task 14 is incomplete.** The smoke script and tested text fix are
   committed with this blocked handoff; the changelog does not claim that
   the main menu draws. Resume after the input-routing scope is resolved.
+
+
+- **2026-09-15 — Task 14 resumed: input reaches Play; main-menu acceptance
+  remains blocked before DirectDraw.** The orchestrator explicitly brought
+  shared screen coordinates and Win32 mouse targeting/capture into scope.
+  Five tested kit fixes are committed on `siege-delphi`:
+
+  | Kit commit | Change | Red -> green evidence |
+  | --- | --- | --- |
+  | `0aaf989` | Shared virtual screen for metrics, GDI dumps and smoke pointer bounds; a selected DirectDraw mode takes precedence | GDI 88 checks / 2 failures -> 88 / 0; DX 138822 / 0 |
+  | `0ed2189` | Mouse hit testing in visible/enabled stacking order, children, client coordinates, activation and capture; Shift/Control MK flags | Runtime 905 / 12 -> 906 / 0, with a separate modifier regression 906 / 1 -> 906 / 0; headless 63 / 0 |
+  | `0605731` | Synchronous SetWindowPos notifications so VCL sees new dimensions before setting the next one | Runtime 911 / 5 -> 911 / 0; headless 63 / 0 |
+  | `17ee0aa` | RET into a resolved import executes that import, preserving the first Delphi delay-load call | SEH 117 / 4 -> 120 / 0 (the additional checks run inside the formerly skipped target) |
+  | `93b80a3` | Incremental builds refresh the adjacent runtime header without regenerating the translated sources | New build test 1 failed -> combined build suites 31 passed |
+
+  Runtime suites retain the existing **1 skipped** imported-data prerequisite.
+  The input regression covers overlapping windows, topmost order, hidden and
+  disabled windows, child coordinates, capture outside the window, release,
+  activation/eaten presses, and keyboard modifier flags. GDI presentation
+  uses the same stacking order as input. Before DirectDraw selects a mode,
+  `RECOMP_SMOKE_DRAWABLE=800x600` now gives both a dump and click space of
+  800x600, with the smoke host asserting agreement. The default remains
+  1024x768. No DirectDraw implementation change was needed or tested by a
+  live game call; its unit test verifies that a selected mode takes priority.
+
+  **Correction to the earlier handoff: the checkmark is the fullscreen
+  checkbox, not confirmation.** Run 6 delivers move/down/up to the startup
+  form `00020010` at client `(226,312)` and toggles that checkbox. The form's
+  `imgBackClick` listing (`functions/00bece70.asm`) tests the fullscreen
+  rectangle `(214,300)-(240,326)` separately from the Play rectangle
+  `(400,320)-(520,385)`, which calls `Done` at `00bebdec`. The initial
+  320-pixel form width placed Play outside the visible client area.
+
+  The form first calls SetWindowPos with 552x240, then 320x406. The old
+  queued WM_SIZE left VCL's cached width stale between those calls. Sending
+  WM_WINDOWPOSCHANGED synchronously, with WM_MOVE/WM_SIZE derived by
+  DefWindowProc, preserves **552x406**, centered at **(124,97)** in the
+  800x600 virtual screen. This follows the
+  [Windows position/size notification contract](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features).
+  The script now clicks **Play at (584,450), client (460,353)**, after its
+  startup dump. It retains the later `dump main-menu` action for resumption.
+
+  **The skin decoder is identified.** Neither `windowscodecs.dll` nor
+  `gdiplus.dll` is loaded near form creation (or anywhere in these traces).
+  `FormCreate` at `00bec200` constructs the guest `TPngImage` class and
+  calls `00bcef24` to read the `STARTUPBACK` RCDATA resource. The pinned PE
+  contains a **552x406 RGBA PNG, 352355 bytes** there. FindResourceW,
+  LoadResource, SizeofResource and LockResource succeed. It is decoded by
+  Delphi's own PNG code, not a missing WIC/GDI+ module.
+
+  FormCreate calls AlphaBlend at `00bec36d`, through thunk `008168b0`.
+  The delay adapter at `00816890` calls the resolver, restores ECX/EDX,
+  exchanges saved EAX with the resolved target on the stack, then RETs to
+  that target. GetProcAddress returned `0ff04870`, but the old RET dispatcher
+  only followed generated code entries, so the first AlphaBlend never ran.
+  The runtime fix and refreshed header now produce an observed
+  **AlphaBlend return of 1**. The first build had retained the stale
+  `gen/x86.h` even though native runtime tests used the new canonical header;
+  the build regression reproduces this and ensures subsequent unchanged
+  builds preserve the header timestamp and existing translation. No
+  translated source was edited or regenerated.
+
+  **Text is verified by pixels.** A temporary DrawText trace (removed before
+  the final build) records three calls: two with DT_CALCRECT, and one actual
+  draw of `1.03.1`, rectangle `(0,0)-(48,16)`, DC origin `(-24,-24)`, foreground
+  COLORREF `0015585f`, transparent background. In run 7, the corresponding
+  screen rectangle **(148,121)-(196,137)** contains **122 pixels of RGB
+  (95,88,21)** and 646 magenta pixels. It is real glyph output, not just a
+  successful return value. The same 122 foreground pixels remain after
+  AlphaBlend starts working. The form resource explicitly selects
+  clFuchsia as its fill/transparency key, as recorded in the prior entry;
+  COLOR_BTNFACE remains `00f0f0f0`.
+
+  **Clean final smoke evidence:** `build/run-smoke.log`, host exit **6**.
+  The startup capture shows the title artwork, Monitor/Resolution/Fullscreen/
+  Language labels, checkmark, and Play, with a largely magenta interior
+  instead of the source PNG's parchment. Settings value text is still
+  absent. Its size/count is **(800,600), 13000 distinct colours**. This is
+  the startup settings form, not the main menu. The trace records Play's
+  move/down/up on `00020010`, the modal teardown, then creation of
+  `TfrmMain` (`0002002c`) and an **800x600 TPanel** (`00020030`). The run has
+  **5 BitBlt, 7 StretchBlt entries**, one AlphaBlend and **zero DirectDraw
+  calls / DirectDraw Blt or Flip calls**. No display mode is requested, so
+  no ScreenResolution seed was applied.
+
+  **New blocker, reproduced in run 9 and the clean final run:** the media
+  constructor `00bc3414.asm` calls CoInitializeEx at `00bc344d`, then
+  `MFStartup(0x20070,0)` through `00bc18e8` at `00bc3459`. LoadLibraryA reports
+  `mfplat.dll` missing, GetLastError returns `0000007e`, and the delay-load
+  helper raises. During the attempted recovery:
+
+  ```text
+  RtlUnwind: registration=0efffabc target_ip=0080a100 retval=00000000
+  SEH: unwind target has no live checkpoint (registration=0efffabc target=00809542 FS=0fe00000 ESP=0efff9d8)
+  [host] an abort from the runtime in guest thread 1: EIP=0080a12a ESP=0efff9d8 EBP=0efffae0
+  ```
+
+  The plan's assumption that the missing Media Foundation module is skipped
+  cleanly is **not established**. The immediate blocker is exception recovery
+  through the missing constructor checkpoint, before any DirectDraw display.
+  No Media Foundation stub, OS-version workaround, direct guest-handler call,
+  translator change or movie exclusion was added. Resuming needs a scoped
+  SEH/constructor-translation investigation (Tasks 12/13), then another
+  smoke run. The remaining startup transparency/value-text defects and the
+  DirectDraw/main-menu checks remain open.
+
+  **Acceptance failed:** execution aborts before `dump main-menu`; neither
+  a current `build/smoke/main-menu.ppm` nor `main-menu.png` exists. Earlier
+  startup-only files with those names were archived under ignored
+  `build/task14-previous-smoke/`. The final startup evidence is
+  `build/smoke/smoke_startup-form_present.ppm` and `startup-form.png`.
+  A 13000-colour startup image does not satisfy the title-screen/menu target.
+
+  Exact test/build commands (from the game root; logs are ignored):
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-coordinates-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-coordinates-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-coordinate-dx.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-routing-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-routing-modifiers-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-routing-final.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task14-routing-headless.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-geometry-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-geometry-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task14-geometry-headless.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-ret-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-ret-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/tests/test_build.py -k incremental_build > build/task14-header-red.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/tests/test_build.py kit/tests/test_build_py.py > build/task14-header-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-ret-translator.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-runtime-final.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-gdi-final.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-config-final.log 2>&1
+  .venv/bin/python kit/tools/check_repo.py > build/task14-repo-final.log 2>&1
+  .venv/bin/python kit/tools/check_game_literals.py > build/task14-literals-final.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task14-profile-final RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16,800x600x32 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/run-smoke.log 2>&1
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/smoke_startup-form_present.ppm build/smoke/startup-form.png
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/startup-form.png'); print(im.size, len(set(im.getdata())))"
+  ```
+
+  Red commands exited 1 with the counts above. Final runtime: **911 checks,
+  0 failures, 1 skipped**; final GDI: **88 checks, 0 failures**. All green
+  native selections end with `100% tests passed, 0 tests failed out of 1`.
+  Build suites: **31 passed**; translator SEH suite: **10 passed**;
+  config/literal pytest: **8 passed**. Smoke build exits 0 with the existing
+  common-section alignment linker warning. Converter reports `(800x600)`;
+  startup pixel check prints `(800, 600) 13000`. Repository boundary check
+  reports `Tracked source boundaries and local documentation links passed`;
+  literal/whitespace checks exit 0 without output.
+
+  Before each kit commit, `.venv/bin/python kit/tools/format.py --write`
+  reports `Formatted 270 handwritten source files`, followed by the
+  repository/literal/staged-whitespace checks. Their logs use the prefixes
+  `task14-coordinate`, `task14-routing`, `task14-geometry`, `task14-ret` and
+  `task14-header`. As previously recorded, `tools/test.py` lacks `-R`; the
+  ignored helper delegates configure/build to the kit test/build modules
+  and selects CTest. Native compilation never invokes a compiler directly.
+  Validation is macOS only; no push, regenerated translation, private input
+  commit, hook/sentinel change, player-save edit or other platform task.
+
+  **Task 14 remains incomplete.** This commit records the tested input and
+  startup-drawing progress with the exact pre-DirectDraw blocker. It does
+  not claim that the main menu draws.

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 14 resumed: smoke input reaches the startup form's Play control,
+  the form keeps its full size, and the skin's delay-loaded AlphaBlend call
+  executes (kit `siege-delphi` 93b80a3). Play dismisses the modal, but missing
+  `mfplat.dll` exposes an SEH checkpoint failure before DirectDraw; the main
+  menu remains unverified. Startup transparency and settings text remain open.
+
 - Task 14: the startup form's version text now draws with the kit's bitmap
   font (kit `siege-delphi` 35277ef). The main-menu smoke script is recorded,
   but progression is blocked by host mouse routing to a hidden VCL window
