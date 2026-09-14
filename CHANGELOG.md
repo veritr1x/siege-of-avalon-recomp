@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` c6adb32 preserves pushed RET continuations, keeps
+- Kit `siege-delphi` 4f6e528 preserves pushed RET continuations, keeps
   speculative SEH bodies prunable, dispatches computed jumps within unrolled
   routines, supports per-game alignment and zero-register SEH frames, and
   interprets bounded compiler-generated guest thunks. Exact x87 integer
@@ -10,9 +10,11 @@
   push their decoded continuation, and oversized heap requests report guest
   registers and return candidates. RET now dispatches vtable-loaded methods,
   removing the oversized allocation and advancing startup into form loading.
+  Omitted cleanup continuations are recovered through the next listed
+  function boundary and kept in their establishing body.
   Headless startup remains blocked before the VCL message loop (Task 13):
-  an except-owned join splits an outer finally cleanup from its establishing
-  function and skips its epilogue.
+  a speculative decode of a wide string hides a real window-creation method
+  from the dispatch table.
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas

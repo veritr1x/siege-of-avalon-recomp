@@ -1745,3 +1745,156 @@ UTF-16 records rather than C strings.
 
   **Acceptance remains unmet.** The configured 600-presented-frame limit is
   never reached; Task 13 stops at finding 14's ownership decision.
+
+
+- **2026-09-14 — Task 13 continuation: span-bounded pushed continuations.**
+  Continued from kit `c6adb32` and game commit `f26d545`, applying the
+  orchestrator's finding-14 decision. Earlier observations remain above.
+
+  14. **Fixed in the translator — kit `4f6e528` (`Translator: recover pushed
+      continuations within listed function spans`).** A listed function's
+      span ends at the next original TSV function start, capped at its
+      executable section end. Newly recovered entries do not shorten it.
+      PUSH immediates within that span seed clean omitted code into the
+      establishing body. Discovery repeats as recovered blocks expose more
+      PUSHes, so the existing RET switch includes the complete continuation
+      chain. Out-of-span targets retain the existing dispatch behavior.
+
+      Recovery reuses the existing instruction sweep and direct-branch
+      traversal, with explicit span bounds. It rejects undecodable code,
+      padding reached before a block terminates, and instructions crossing the
+      span boundary; emitter validation and the existing invalid-target checks
+      still apply. Handler stubs retain their separate entries. Their in-span
+      landing blocks are attached as alternate entries in the establishing
+      body, allowing a normal path to join an except suffix before reaching
+      an outer finally cleanup. Overlapping recovered fragments retire into
+      that owner without promoting speculative entry provenance.
+
+      The previous private nested-cleanup reproducer is now in
+      `test_translate_driver.py`. A two-link omitted PUSH/RET chain checks
+      labels and switch cases in the owning body; companion cases check the
+      next listed boundary, rejection of UD2, padding and a truncated
+      instruction. Existing tests that expected standalone continuation
+      functions now inspect their owning body instead, preserving their
+      decoded-CALL-return assertions. The initial rejection fixture used
+      PUSH ES, which the emitter supports; it was corrected to UD2.
+
+  Checks:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k 'nested_except_join or span_recovers'
+    > build/task13-f14-promoted-red.log 2>&1`: **4 failed, 64 deselected**,
+    exit **1**, before implementation. The nested ownership and both valid
+    continuation-chain cases fail before the change.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f14-green.log 2>&1`: **123 passed**, exit **0**, after
+    implementation and the additional boundary checks.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f14-portable.log 2>&1`: **179 passed, 1 skipped**, exit
+    **0**. The existing corpus exclusions remain. The final adjustment to
+    derive boundaries from every original TSV row was subsequently covered
+    by the 123-test instruction/driver run above.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f14-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`. The existing wrapper is retained because the root native
+    CLI lacks `-R`.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f14-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f14-format.log 2>&1`: **exit 0**, 268 handwritten files
+    formatted. `kit/tools/check_repo.py`, `kit/tools/check_game_literals.py`
+    and the staged whitespace check passed before the kit commit.
+
+  Regeneration and the next finding:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f14-regenerate.log 2>&1`: **exit 0**. Translation took
+    **356.0 seconds**, emitting **30,090/32,532 functions, 44,113 entries,
+    152 chunks**, after 20 discovery rounds. The table audit reports 277
+    decoded tables, 3,709 entries, zero dispatches to nowhere and zero
+    undecoded tables. The existing linker section-alignment warning remains.
+    Generated `body_00879224` now contains the omitted continuation chain,
+    including RET cases for `0087954f` and `00879571`, and the real epilogue
+    at `L_00879571`. The earlier unknown target `00000001` disappears.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-15.log 2>&1`: **exit 6**.
+    Startup advances to window-class registration, then reaches finding 15.
+
+  15. **Blocked on a new candidate-admission rule; no fix commit.** The log
+      reports `call to unknown target 00a09a30 (ESP=0efffbc4,
+      return=00961bcc): returning 0`. The caller at `00961bc6` performs
+      `CALL dword ptr [ECX+0xe4]`. The target is real, unlisted code with
+      `PUSH EBP; MOV EBP,ESP; ADD ESP,-0x274; PUSH EBX; PUSH ESI; PUSH EDI`,
+      followed by an SEH frame. Seven relocated vtable slots point to it:
+      `0098a020`, `0098b64c`, `009fcdd0`, `009fe38c`, `009ff92c`,
+      `00bd2028`, and `00beb598`.
+
+      The preceding UTF-16 `MDICLIENT` string at `00a09a1c` is referenced by
+      `MOV EDX,00a09a1c` at `00a098e3` in listed function `00a0981c`.
+      Immediate scanning admits the string as speculative code. Its sweep
+      misdecodes bytes at `00a09a2f` as a three-byte ADD spanning the real
+      prologue, then emits IN at `00a09a32`. The real method start becomes
+      an interior byte of that speculative instruction, so `code_pointers`
+      excludes it before evaluating its entry evidence. The generated
+      `body_00a09a1c` remains speculative, as finding 5 requires; its
+      instructions and targets pass the existing pruning checks. It does
+      not begin with the rejected `00 00` encoding. The next listed start
+      is `00a09da0`; this is separate from finding 14's cleanup ownership.
+
+      A synthetic fixture with the same UTF-16 prefix, immediate reference,
+      relocated method pointer and alignment 4 reproduces the missing entry:
+      `.venv/bin/python -m pytest -q build/task13_wide_prefix_entry_test.py
+      > build/task13-f15-reproducer.log 2>&1`: **1 failed**, exit **1**.
+      Translation succeeds but omits the real method's dispatcher entry.
+      Source and generated evidence remain ignored under `build/`.
+      Choosing whether to reject wide-string-prefix candidates or allow
+      stronger entry evidence to override speculative interior coverage
+      changes recovery policy for other games; that decision is left to
+      the orchestrator.
+
+      The caller sees a zero window handle after the skipped method and
+      raises **EOSError**, message **`System Error.  Code: 126.\r\nError 126`**.
+      Unwinding subsequently aborts with `SEH: unwind target has no live
+      checkpoint (registration=0effff84 target=00809542 FS=0fe00000
+      ESP=0efffb20)`. This is downstream of the missing method and must be
+      re-evaluated after admission is fixed. No separate unwind change was
+      made. The approved optional GetLogicalProcessorInformation and
+      RtlCompareUnicodeString misses remain unchanged; other observed
+      optional misses are not established as this failure's cause.
+
+  Diagnostic and final verification details:
+
+  - A temporary `RaiseException` probe saved guest memory before dispatch.
+    `.venv/bin/python tools/build.py --target headless --jobs 8
+    > build/task13-f15-probe-build.log 2>&1`: **exit 0**. The run command
+    above, adding `RECOMP_EXCEPTION_DUMP=build/task13-exception-15.bin` and
+    redirecting to `build/task13-f15-probe.log`, exited **6**. The record has
+    code `0eedfade`, seven information words, and object `010f9c88` in
+    `ExceptionInformation[1]`. Its VMT is `00820ce4`, its message pointer
+    at object+4 is `0110eccc`, and the UTF-16 message was read using the
+    length at message-4. The verified class-name pointer is at **VMT-0x38**
+    (`00820d0f`, short string `EOSError`); the plan's VMT-0x2c instead points
+    to code in this executable. Decoded evidence is in
+    `build/task13-f15-exception.txt`. No guessed class-layout change was
+    committed to the runtime.
+  - All temporary probes were removed; `git -C kit diff --exit-code` passed.
+    `.venv/bin/python tools/build.py --target headless --jobs 8
+    > build/task13-f15-restored-build.log 2>&1`: **exit 0**.
+  - Final committed-source run:
+    `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-16.log 2>&1`: **exit 6**,
+    with the same missing method and unwind diagnostic. Abort context:
+    **EIP=0080a12a, ESP=0efffb20, EBP=0effffb4**. There are **0**
+    `PeekMessageW|MsgWaitForMultipleObjectsEx` lines, **0** frame files,
+    **0** oversized heap refusals, and no remaining probe output.
+    The pinned executable SHA-256 was rechecked and matches
+    `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  **Acceptance remains unmet.** The configured 600-presented-frame limit is
+  never reached; Task 13 stops at finding 15's candidate-admission decision.
