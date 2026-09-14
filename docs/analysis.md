@@ -1898,3 +1898,158 @@ UTF-16 records rather than C strings.
 
   **Acceptance remains unmet.** The configured 600-presented-frame limit is
   never reached; Task 13 stops at finding 15's candidate-admission decision.
+
+
+- **2026-09-14 — Task 13 continuation: stronger entry evidence and UTF-16 candidates.**
+  Continued from kit `4f6e528` and game commit `04dfd35`, applying the
+  orchestrator's finding-15 decision. Earlier findings remain above.
+
+  15. **Translator fix — kit `be37a5a` (`Translator: let protected entries
+      supersede speculative sweeps`).** Entry evidence is ranked as listed,
+      explicit config/SEH or structural table seed, direct edge from a
+      protected body, then scan guess. A direct edge from another scan guess
+      stays weak. A newly protected target truncates weaker overlapping
+      coverage before admission. A complete prefix can tail into the new
+      entry; a prefix cut through an instruction is withdrawn. Removed
+      instruction-interior bytes and alternate entries are cleared, while
+      overlapping valid ownership is restored. A later scan guess also stops
+      before already protected entries. The existing SEH split-and-adopt path
+      is retained for landings into normal cleanup already attached to its
+      establishing body, preserving the finding-4 RET behavior without
+      promoting a speculative entry from its content.
+
+      The subordinate recovery filter rejects speculative candidates whose
+      first 16 bytes contain four consecutive printable ASCII UTF-16 pairs.
+      Listed and protected entries bypass that heuristic. The private wide
+      prefix fixture is promoted into `test_translate_driver.py`; independent
+      non-string fixtures admit a guess before discovering a protected CALL
+      target and verify truncation or withdrawal, and weak-caller fixtures
+      verify that merely containing a CALL does not earn protection.
+
+      One premise differs from the pinned PE: scanning executable sections
+      found no E8/E9 rel32 transfer whose destination is `00a09a30`. The
+      observed call at `00961bc6` is indirect through `[ECX+0xe4]`, with seven
+      relocated vtable references to the method. The UTF-16 filter therefore
+      resolves that fixture's admission; evidence ordering is independently
+      verified by the non-string CALL fixtures. No new rank was invented for
+      relocated pointers. The most recent missing module before the previous
+      error 126 was `uxtheme.dll` (log line 1241, versus the missing method at
+      line 1959); `msctf.dll` and `d3dxof.dll` were earlier misses. This does
+      not establish that a new module shim is needed.
+
+  Checks:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k 'wide_string_prefix or protected_call_target or utf16_run_filter'
+    > build/task13-f15-red.log 2>&1`: **4 failed, 1 passed, 70 deselected**,
+    exit **1**, before implementation. The promoted fixture, both late-CALL
+    truncation cases and speculative UTF-16 rejection fail as expected;
+    the protected text-like entry already passes.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f15-green.log 2>&1`: **130 passed**, exit **0**.
+    An intermediate run exposed a regression in the existing cleanup-prefix
+    ownership test; preserving its split-and-adopt path fixed that regression.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f15-portable.log 2>&1`: **184 passed, 1 skipped**, exit
+    **0**. The existing corpus exclusions remain. Two additional weak-caller
+    parameter cases were subsequently covered by the 130-test run above.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f15-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`. The existing wrapper is retained because the root native
+    CLI lacks `-R`.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f15-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f15-format.log 2>&1`: **exit 0**, 268 handwritten files
+    formatted. `.venv/bin/python kit/tools/check_repo.py`,
+    `.venv/bin/python kit/tools/check_game_literals.py` and the staged
+    whitespace check passed before the kit commit.
+
+  Regeneration and the next boundary:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f15-regenerate.log 2>&1`: **exit 1**, before native
+    compilation. The final translator invariant reports **3 literal dispatch
+    targets are not entry points**. A replacement translation was not
+    published, so the retained binary still belongs to the preceding run.
+    It was not rerun as evidence for this change.
+
+  16. **Blocked on pruning and ownership of protected cleanup aliases; no
+      fix commit.** The three failure lines are:
+      - `fn_00b9c2ff dispatches to 00b9c2e9, which is not an entry point`
+      - `fn_00be4cf7 dispatches to 00be4ce9, which is not an entry point`
+      - `fn_00be4fd6 dispatches to 00be4fc8, which is not an entry point`
+
+      These are Delphi HandleFinally landing JMPs to ordinary cleanup
+      instructions, verified in the pinned PE. They have `seh` provenance
+      and protected-entry status. At the end of discovery, `00b9c2e9` belongs
+      to recovered body `00b9ba08`; both `00be4ce9` and `00be4fc8` belong to
+      recovered body `00be4bf4`. Both owners have `data` provenance and are
+      unprotected, consistent with finding 5. The old speculative UTF-16
+      prefix at `00be4bd4` is no longer the cleanup owner; its real prologue
+      is at `00be4bf4`.
+
+      The final pruning pass withdraws `00b9ba08` because it dispatches to
+      missing `00b9c307` (the real epilogue's `RET 0x10`). It withdraws
+      `00be4bf4` because its CALL at `00be4e60` names missing `00919fa0`
+      (a real `PUSH EBP; MOV EBP,ESP` method with its own frame). Pruning
+      deletes each withdrawn owner's alternate entries, including the
+      protected cleanup targets. Those targets remain in the discovery
+      address set and ownership map, but are absent from the emitted entry
+      table. The structurally seeded landing JMPs survive, triggering the
+      final dispatch invariant. The snapshot establishes this loss; it does
+      not yet establish why those two dependencies lack surviving entries.
+
+      A bounded synthetic reproducer isolates the same pruning cascade:
+      a speculative prefix with an invalid outgoing edge covers a real
+      callee; a second speculative body calls that callee and establishes a
+      finally cleanup. Pruning the prefix removes the callee alias, then
+      prunes its caller and deletes the protected cleanup alias. The surviving
+      landing JMP fails the entry-table invariant. The reproducer fails on
+      both this commit and the preceding translator, establishing an existing
+      gap exposed by the changed discovery results:
+      - `.venv/bin/python -m pytest -q build/task13_f16_pruned_owner_test.py
+        > build/task13-f16-red.log 2>&1`: **1 failed**, exit **1**, against
+        restored committed source. It reports `fn_00601085 dispatches to
+        00601041, which is not an entry point`.
+      - `.venv/bin/python build/task13-f16-baseline.py
+        > build/task13-f16-baseline.log 2>&1`: **1 failed**, exit **1**, with
+        translator source loaded from kit `4f6e528` and the same fixture.
+
+      Preserving or recovering these protected aliases needs an ownership
+      rule compatible with the pushed-continuation RET behavior. Promoting a
+      speculative owner simply because it contains SEH would violate finding
+      5; moving cleanup into an independent body can lose finding 4's normal
+      continuation. No such policy change, guest-address seed, module shim,
+      or bypass of the dispatch check was made. The private reproducer remains
+      ignored under `build/` for the orchestrator's next decision.
+
+  Diagnostic and final verification details:
+
+  - A temporary translator failure dump recorded target ownership and the
+    pruning dependencies. `.venv/bin/python tools/build.py --regenerate
+    --target headless --jobs 8 > build/task13-f15-diagnostic-regenerate.log
+    2>&1`: **exit 1**, with the same three missing entries. The snapshot is
+    `build/recomp/translate-report.json.failure.json`; the probe was removed
+    afterward and `git -C kit diff --exit-code` passed. No generated code or
+    runtime source was edited.
+  - An initial isolated cleanup-owner hypothesis failed on the preceding
+    translator too, so that attempted regression was removed. The pruning
+    reproducer above captures the actual dispatch-invariant failure.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f15-final-green.log 2>&1`: **130 passed**, exit **0**,
+    after removal of the diagnostic probe.
+  - `build/task13-f15-pe-evidence.txt` records the unchanged executable hash
+    `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`
+    and the absence of E8/E9 rel32 references to `00a09a30`.
+
+  **Acceptance remains unmet.** Regeneration stops before a new headless
+  binary can be run. Consequently the downstream EOSError code 126 and
+  no-live-checkpoint unwind failure have not been re-evaluated under this
+  change, and no 600-frame/message-loop success is claimed. Task 13 stops at
+  finding 16's pruning/ownership decision.
