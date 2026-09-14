@@ -679,3 +679,113 @@ UTF-16 records rather than C strings.
   - Formatting, game-literal, staged source-boundary and whitespace checks
     passed before each kit commit/amendment. Both repositories remain local;
     no generated code, game assets, run logs or diagnostic scripts are committed.
+
+  **2026-09-14 continuation, after the orchestrator's entry-provenance decision:**
+
+  5. Finding 5 is resolved by kit **4af5a2a**, `Translator: keep speculative
+     SEH bodies prunable`. Entry protection is tracked independently of the
+     instructions swept into a body: listed, config and SEH entries, and
+     direct targets reached from protected entries, can protect an owner.
+     Merely overlapping a frame or cleanup cannot promote a speculative
+     entry. Speculative blocks starting with `00 00` (`ADD [EAX],AL`) are
+     rejected as data. The overlapping-prefix reproducer is now a synthetic
+     driver regression; it checks that the prefix disappears, the real body
+     retains its cleanup wrapper and RET dispatch, and data-scan provenance
+     is not promoted by SEH content. Config and direct-call cases also pass.
+
+     Full-image validation exposed additional bookkeeping cases while
+     implementing this rule. Compilation initially found duplicate
+     `fn_00828370` definitions: a cleanup already contained in its owner still
+     had an independent body. A failing driver regression now checks that
+     adopting it retires the standalone definition. Two subsequent normal
+     regenerations reached the unchanged 64-round convergence guard. SEH
+     resolution was recreating retired epilogues and blocks whose entries
+     precede a shared cleanup; failing regressions now preserve those entries
+     as wrappers into their owner. The next compile found duplicate
+     `fn_0096adcb` definitions. A bounded diagnostic trace showed two separate
+     recoveries at that same address before adoption retired only one;
+     resolution now reuses an existing body at the entry. These corrections
+     were formatted and amended into the single finding-5 commit above.
+     Three bounded diagnostic translations intentionally stopped before
+     emission; their temporary tracing is absent from committed source.
+
+     The final normal regeneration and headless link **exit 0**
+     (`build/task13-f5-regenerate-05.log`). Translation took **124.9 s**:
+     **29,816/30,495 functions**, **38,126 entry points**, **4,028 candidates
+     rejected as data**, 151 chunks. The linker retained its existing section
+     alignment warning. This is the first successfully rebuilt headless
+     binary containing both findings 4 and 5.
+
+  6. The fresh boot **exits 6** at
+     `no block entry for indirect jump to 0x00807e2a from 0x00807e1a`
+     (`build/task13-run-05.log`). It gets beyond the earlier locale cleanup
+     corruption and reaches another `GetLocaleInfoW` call. The verified
+     listing `functions/00807dc0.asm` is an unrolled fill routine: its short
+     path masks the count with `AND EDX,0xfffffffe`, negates it, forms
+     `EDX*2 + 0x00807e5a`, and executes `JMP EDX`. The resulting target is an
+     instruction inside the same body, not a table entry or a CALL return.
+     The emitter recognizes no table for this register jump and emits an
+     external `recomp_jump`, so the internal stores are skipped or rejected.
+
+     The ignored `build/task13_computed_fill_test.py` reproduces this with
+     synthetic addresses and a six-byte fill. After correcting its initial
+     listing grammar, the native/Unicorn comparison **fails** with
+     `scratch differs first at 0e100000: native 00 unicorn a5`.
+     There is **no fix commit for finding 6**. This needs a translator design
+     rule for computed instruction addresses: recover bounded arithmetic
+     targets into the existing local switch, or support a broader local
+     dispatch rule. Either changes target discovery beyond the current
+     memory-table model; work stops for that decision as instructed.
+
+     Two nonfatal lookups remain open:
+     `GetProcAddress(?, "GetLogicalProcessorInformation") -> 0 (no shim registered)`
+     and `GetProcAddress(?, "RtlCompareUnicodeString") -> 0 (no shim registered)`.
+     The listings and PE strings name `kernel32.dll` and `NTDLL.DLL`.
+     The `?` also matters: `GetProcAddress` has no registered module for the
+     supplied handle, so adding export shims alone will not repair these
+     lookups. The guest proceeds past both. Module-handle behavior and the
+     missing exports remain to be handled after the design boundary; neither
+     is claimed fixed. No unhandled Delphi exception occurred in this boot,
+     so there was no exception object to decode.
+
+  The exact boot command was:
+  `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+  RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+  build/recomp/pop_headless > build/task13-run-05.log 2>&1`.
+  The host reports a **600-frame / 180-second** cap; no thread override was
+  used. `grep -c 'PeekMessageW\|MsgWaitForMultipleObjectsEx'
+  build/task13-run-05.log` prints **0**, and there are **0 frame files**.
+  Task 13's **600-frame, exit-0 acceptance remains unmet**. The executable's
+  pinned SHA-256 was freshly verified again.
+
+  Validation from the game repository root:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k finally_cleanup`: initial **16 failed, 4 passed, 25 deselected**
+    (`task13-f5-red.log`). The duplicate-body and convergence regressions
+    also failed before their fixes (`task13-f5-duplicate-red.log`,
+    `task13-f5-convergence-red-final.log`, `task13-f5-prefix-red.log`).
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py`:
+    final **140 passed, 1 skipped** (`task13-f5-portable-05.log`), retaining
+    the prior corpus exclusions.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8`:
+    final **exit 0** (`task13-f5-regenerate-05.log`); earlier normal attempts
+    **exit 1** as described above. All build output is under `build/`.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose`:
+    **844 checks, 0 failures, 1 skipped**, exit **0**, label `game`
+    (`task13-f5-runtime.log`).
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose`:
+    **113 checks, 0 failures**, exit **0**, label `nogame`
+    (`task13-f5-seh.log`). The existing helper uses the kit build/test wrappers;
+    the current `tools/test.py` CLI has no `-R` option.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py`:
+    **7 passed** (`task13-f5-config-final.log`).
+  - `.venv/bin/python -m pytest -q build/task13_computed_fill_test.py`:
+    **1 failed**, the unresolved finding-6 reproducer
+    (`task13-f6-computed-fill-red-final.log`).
+  - Formatting, staged source-boundary, game-literal and whitespace checks
+    passed before every kit commit/amendment. No generated code, assets,
+    run logs or private diagnostic scripts are committed, and nothing is pushed.
