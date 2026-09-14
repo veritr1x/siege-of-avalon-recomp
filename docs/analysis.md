@@ -3305,3 +3305,137 @@ UTF-16 records rather than C strings.
   the cap, or gameplay. Stop here under the explicit instruction to report
   a painted form whose frame count stalls. No artificial repeat presents,
   forced invalidation loop, automatic click, or Task 14 smoke work is added.
+
+
+- **2026-09-15 — Task 13 complete: display-clock refresh and the 600-frame
+  acceptance (findings 32–33).** The orchestrator identifies run 31 above as
+  the **first live paint** of the actual 320x406 startup settings form. Its
+  checkmark button is near (578,493) in the 1024x768 capture. A static window
+  correctly receives no further WM_PAINT after validation; the one-frame
+  stall was the host presentation policy, not a reason to invalidate or
+  dismiss the form. The prior incomplete outcome remains recorded above.
+
+  32. **Static GDI refresh on the display clock.** Run 31 line **40320600**
+      reports one frame despite millions of message polls. Kit **`8a6c27c`**
+      (`Host: refresh static GDI windows on the display clock`) makes the
+      headless and smoke host ticks refresh retained visible window surfaces
+      at the virtual display's **60 Hz** rate. Each present advances the
+      existing pinned guest clock exactly once; RECOMP_PIN_CLOCK's configured
+      start and step remain unchanged. Missed display ticks are coalesced,
+      rather than emitting a burst of stale frames after a long guest call.
+      Recent DirectDraw primary presents own the cadence. After two refresh
+      intervals without one, window refreshes resume with the idle primary
+      as their base. Primary memory is not changed by composition.
+
+      The smoke host now measures and captures 32-bit GDI snapshots through
+      the same path as its primary frames and seals them for its presenter.
+      Its primary frames also composite visible window surfaces. Both hosts
+      honor RECOMP_FRAMES and RECOMP_FRAME_EVERY; existing smoke scripted dumps
+      remain independent. No WM_PAINT loop or input injection was added.
+
+      The painted-once regression failed **8 assertions** before the change:
+      **58 checks, 8 failures**. Afterward, including primary-cadence takeover,
+      resumption over an idle primary, and the absence of frames without
+      visible surfaces, **headless_tests passes 63 checks**. Four refresh
+      ticks produce four more captures of unchanged pixels and advance a
+      pinned clock from 100 to 300 with a 50 ms step. The initial test setup
+      used an assumed sleep helper; it was corrected to the actual
+      os_sleep_us API before observing the behavioral failures.
+
+  33. **Import return values for the drawing handoff.** Run 31 logs the drawing
+      calls (for example BitBlt at **676814**) but not their results. Kit
+      **`a764102`** (`Runtime: include return values in verbose import traces`)
+      adds `<- module!function (eax=...)` under the existing RECOMP_LOG=2 switch.
+      A subprocess regression checks both a nonzero value and FALSE. It fails
+      **2 assertions** before the implementation, then passes with the full
+      runtime suite: **893 checks, 0 failures, 1 skipped**. The isolated
+      fixture preserves the requested uppercase DLL spelling, unlike this
+      image's lowercase import descriptions; the assertions were corrected
+      and the failing/passing sequence repeated. No drawing semantics changed.
+
+  **Run 32 is the acceptance run.** With the command below, the process exits
+  **0**, reaches **600 presented frames in 14.3 seconds**, and posts WM_CLOSE
+  for the frame cap at `build/task13-run-32.log` line **3749581**. The guest
+  calls ExitProcess(0) at **3751315**; the summary at **3751320–3751338** confirms
+  elapsed time, **600 frames / 10 written captures**, and guest exit code zero.
+  The wall-clock cap is not reached. Import statistics record **108,954
+  PeekMessageW calls**, **108,907 WaitMessage calls**, and one BeginPaint /
+  EndPaint pair. The first paint/capture is at **1353033–1353542**.
+
+  All ten sampled PPMs (frame_0000 through frame_0540, every 60th present)
+  have the same SHA-256 as one another: they are refreshes of the static
+  startup form. The last sampled image was converted to
+  `build/task13-frames-32/frame_0540.png` and visually inspected. It retains
+  the magenta background and visible checkmark glyph, with no readable labels.
+  This establishes the approved startup-form/message-loop acceptance, not
+  the main menu, progression past the form, or gameplay. No click was sent.
+
+  No RaiseException, SEH failure, unallocated-trampoline warning, unknown
+  target, or abort occurs. The existing optional misses remain
+  GetLogicalProcessorInformation, RtlCompareUnicodeString,
+  InitializeConditionVariable, and DirectXFileCreate, plus msctf.dll,
+  d3dxof.dll, and uxtheme.dll. Startup proceeds past each without an exception;
+  no stub was invented for them.
+
+  **Task 14 run report — initial observations, recorded without fixes:**
+  the background bitmap does not draw; magenta is the form color or a
+  transparency key showing through. No label text is visible. The checkmark
+  button's glyph does draw. Run 32's traced drawing results are:
+
+  | API | Calls | Returned EAX | Evidence in run 32 |
+  | --- | ---: | --- | --- |
+  | LoadBitmapW | 0 | Not called | No call trace; listed as not reached |
+  | LoadImageW | 0 | Not called | No call trace |
+  | CreateDIBitmap | 0 | Not called | No call trace; listed as not reached |
+  | SetDIBitsToDevice | 0 | Not called | No call trace; listed as not reached |
+  | StretchDIBits | 1 | 0x00000018 (24) | Return line 1353410; caller continuation 00bce888 |
+  | BitBlt | 5 | 0x00000001 on all five | Return lines 1350147, 1350149, 1353224, 1353242, 1353538 |
+  | ExtTextOutW | 0 | Not called | No call trace; listed as not reached |
+  | DrawTextW | 3 | 0x00000010 (16) on all three | Return lines 2513, 4097, 1353520; caller continuation 00974978 |
+
+  **None of the called APIs in this requested set reports failure.** Their
+  returned success values do not prove that the expected bitmap or label
+  pixels reached the form; resolving that discrepancy belongs to Task 14.
+
+  Validation commands, from the game root; all logs, profiles, and captures
+  are ignored local artifacts:
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task13-f32-headless-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task13-f32-headless-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py host_tests --verbose > build/task13-f32-host-tests.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task13-f32-gdi-tests.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task13-f32-config.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/task13-f32-smoke-build.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f33-runtime-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f33-runtime-green.log 2>&1
+  .venv/bin/python tools/build.py --target headless --jobs 8 > build/task13-f33-headless-build.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/task13-f33-smoke-build.log 2>&1
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task13-profile-32 RECOMP_FRAMES=build/task13-frames-32 RECOMP_FRAME_EVERY=60 build/recomp/pop_headless > build/task13-run-32.log 2>&1
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/task13-frames-32/frame_0540.ppm build/task13-frames-32/frame_0540.png
+  ```
+
+  - Headless red: **58 checks, 8 failures**, exit 1; final green **63 checks,
+    0 failures**, exit 0. Host: **4,050,705 checks, 0 failures**, exit 0.
+    GDI: **73 checks, 0 failures**, exit 0. Config/literal pytest: **8 passed**,
+    exit 0. Native green runs report **100% tests passed**.
+  - Return-trace runtime red: **893 checks, 2 failures, 1 skipped**, exit 1;
+    green: **893 checks, 0 failures, 1 skipped**, exit 0. The skip remains
+    the image's lack of imported data symbols.
+  - Both hosts build successfully, exit 0. Smoke retains existing C-linkage
+    warnings for user-defined return types; both links retain the existing
+    common-section alignment warning. Smoke was built, not used to drive
+    the guest or perform Task 14 actions.
+  - No translator change or regeneration. The actual switches remain
+    RECOMP_MAX_FRAMES and RECOMP_LOG. Native suites use the existing ignored
+    helper because the root test wrapper does not accept -R; it delegates
+    builds to the kit tools and selects CTest targets.
+  - Before each kit commit, `.venv/bin/python kit/tools/format.py --write`
+    formatted **270 files**, and repository-boundary, game-literal, and
+    staged whitespace checks passed. Their outputs are in the corresponding
+    `build/task13-f32-*` and `build/task13-f33-*` check logs.
+
+  **Task 13 is complete under the orchestrator's final acceptance.** Run 31
+  is the first live paint; run 32 proves the 600-frame, exit-0 startup-form
+  run before the wall-clock cap. The drawing defects above are handed to
+  Task 14, with their observed call results and no speculative rendering fix.
