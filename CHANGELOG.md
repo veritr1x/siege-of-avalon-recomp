@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` d5778d1 preserves pushed RET continuations, keeps
+- Kit `siege-delphi` d60c717 preserves pushed RET continuations, keeps
   speculative SEH bodies prunable, dispatches computed jumps within unrolled
   routines, supports per-game alignment and zero-register SEH frames, and
   interprets bounded compiler-generated guest thunks. Exact x87 integer
@@ -15,10 +15,11 @@
   Protected entry evidence now takes precedence over speculative sweeps,
   and speculative UTF-16 string runs are rejected. Required cleanup aliases
   now survive speculative-owner pruning through their listed span owners,
-  and the headless build succeeds. The UTF-16 guard now admits repeated
-  `PUSH 0` prologues and exempts relocation-named candidates. Task 13 remains
-  blocked because a relocation-backed string sweep hides a virtual method;
-  the VCL message loop is still unverified.
+  and the UTF-16 guard admits repeated `PUSH 0` prologues while rejecting
+  relocated text. Relocated entry candidates outrank bare scan guesses,
+  and final table coverage is rebuilt after ownership changes. The headless
+  build succeeds; Task 13 remains blocked by a short-string sweep hiding an
+  equally ranked method stub. The VCL message loop is still unverified.
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas

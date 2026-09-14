@@ -2291,3 +2291,159 @@ UTF-16 records rather than C strings.
   stops at finding 18: the recovery rules need to resolve overlapping
   relocation-backed code and data candidates without reinstating the
   zero-local prologue rejection.
+
+- **2026-09-15 — Task 13 continued: relocation evidence and text rejection
+  (finding 18).** The orchestrator withdrew finding 17's relocation
+  exemption. Kit `ec2a84b` (`Translator: rank relocated candidates without
+  exempting string data`) keeps the `0x6a` exclusion and applies the UTF-16
+  content filter to speculative candidates regardless of relocation.
+
+  18. **Relocated string sweep hides a relocated method — fix `ec2a84b`.**
+      The motivating line was `call to unknown target 00a09a30
+      (ESP=0efffbc4, return=00961bcc): returning 0`. The promoted fixture
+      names both the `MDICLIENT` literal and the following prologue with
+      relocations, and now requires the literal to be rejected and the
+      method emitted. The finding-17 zero-local cases remain green.
+
+      Entry evidence now ranks original listings above explicit/structural
+      seeds, protected direct edges, relocated pointers, and bare guesses,
+      in that order. Relocated candidates can truncate a weaker sweep or
+      bound a later one, but remain subject to content validation and
+      pruning. They do not gain protected SEH provenance merely from a
+      relocation. A dedicated relocation pass reaches the resolver even
+      when a bare guess has covered the first byte; it preserves stronger
+      instruction boundaries. Regression variants cover both discovery
+      orders, aligned and crossing instructions, and listed/seeded owners.
+
+  Verification before regeneration:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k 'wide_string_prefix or utf16_run_filter or zero_local_pushes or relocated_method_outranks'
+    > build/task13-f18-promoted-red.log 2>&1`: **4 failed, 7 passed**,
+    exit **1**, before implementation. Failures cover the relocated text
+    filter and both weaker-prefix overlap cases.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f18-green.log 2>&1`: **151 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f18-portable.log 2>&1`: **207 passed, 1 skipped**,
+    exit **0**, retaining the earlier private-corpus exclusions.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f18-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f18-format.log 2>&1`: **268 handwritten source files
+    formatted**, exit **0**. Repository-boundary, game-literal and staged
+    whitespace checks passed before the kit commit.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k relocated_alias_keeps_listed > build/task13-f18-alias-red.log 2>&1`:
+    **1 failed**, exit **1**, before preserving the stronger evidence of an
+    already-listed instruction boundary. The case is included in the final
+    passing suites above. The initial regeneration was deliberately stopped
+    for this correction (exit **241**, log preserved as
+    `build/task13-f18-regenerate-initial.log`); no binary from that attempt
+    was used. The correction was included in the same finding-18 kit commit.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f18-regenerate.log 2>&1`: exit **1**, at the table gate:
+    **0 dangling table entries / 3 sites decoded nothing**. The sites were
+    `00a5ea5a` under `00a5e86c`, `00a60edb` under `00a60d7c`, and
+    `00b5a047` under `00b597dc`. No headless run used this failed attempt;
+    the previous binary and report remained in place.
+
+  19. **Stale table-site records after ownership truncation — fix
+      `d60c717` (`Translator: rebuild table-site coverage after ownership
+      discovery`).** The gate reported `jump table at 00a5ea5a
+      (in fn_00a5e86c) reads 00a5ea61 but decoded no entries at all`, plus
+      the two analogous sites above. The pinned PE contains ordinary
+      absolute tables, guarded by `CMP reg,7; JA` or `CMP reg,0xf; JA`.
+      The table decoder already supports these shapes.
+
+      Discovery recorded the switch under an earlier speculative body.
+      Truncating that body transferred its suffix to a stronger entry, but
+      the final pass cleared decoded tables without clearing the cached
+      table-site records. The surviving prefix was therefore falsely
+      reported as containing an undecoded switch. The final strict pass now
+      rebuilds both collections from the final bodies. A synthetic driver
+      regression reproduces the old-owner false positive; another verifies
+      that a genuinely undecoded live table still fails the gate. No table
+      rule or gate override was added.
+
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+      -k truncated_guess_drops > build/task13-f19-red.log 2>&1`:
+      **1 failed**, exit **1**, before implementation, with the same
+      `1 table sites decoded nothing` failure under the old prefix.
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+      kit/tools/recomp/tests/test_translate_insns.py
+      > build/task13-f19-green.log 2>&1`: **153 passed**, exit **0**.
+      `.venv/bin/python kit/tools/format.py --write
+      > build/task13-f19-format.log 2>&1` formatted **268 handwritten source
+      files**; repository-boundary, game-literal and staged whitespace
+      checks passed before the kit commit. The three PE table decodes remain
+      ignored in `build/task13-f19-pe-evidence.txt`.
+
+  Final verification and run:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f19-portable.log 2>&1`: **209 passed, 1 skipped**,
+    exit **0**, including both table-site regressions.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f19-regenerate.log 2>&1`: exit **0**. Translation took
+    **1045.7 seconds** and emitted **29,791 functions / 42,739 entries**,
+    including **12,948 alternate entries**, with **0 failures**, **0 table
+    gaps**, and **0 undecoded table sites**. The headless target linked
+    successfully with the existing `__DATA,__common` alignment warning.
+    `fn_00a09a30`, `fn_00bca4c8` and `fn_00919fa0` are all emitted.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-19.log 2>&1`: exit **6**,
+    **411 log lines**, **0 frame files**, and **0 matches** for
+    `PeekMessageW|MsgWaitForMultipleObjectsEx`. The run stops at finding 20.
+
+  20. **Blocked: an equally ranked short-string guess hides a method stub;
+      no fix commit.** Line 408 is `recomp: no block entry for indirect jump
+      to 0x0086e98c from 0x00809235`. The source is `JMP ESI` in listed
+      `00809220`: it calls `008091f0` to look up a method through the class
+      metadata and jumps to the returned address. This is an in-image method
+      target, not a heap-generated thunk or an omitted SEH landing.
+
+      The nearest listed span for the target is `0086e8e8..0086e990`, but
+      that listing ends at `0086e8ee`. The PE bytes at `0086e98c` are
+      `33 c0 c3` (`XOR EAX,EAX; RET`), followed by a NOP. A relocated
+      metadata slot at `008460a0` names the stub. Immediately before it,
+      `0086e988` holds UTF-16 `"."` and its terminator (`2e 00 00 00`),
+      itself named by a relocated `PUSH` operand at `0086e947`.
+
+      That single-character literal does not meet the four-pair string
+      guard and both targets have relocation rank. The string sweep decodes
+      `0086e988: 2e 00 00` as `ADD byte ptr CS:[EAX],AL`, then
+      `0086e98b: 00 33` as `ADD byte ptr [EBX],DH`; this consumes the stub's
+      first byte. Generated `fn_0086e988` contains those instructions, while
+      `fn_0086e98c` is absent. The current ordering permits truncation only
+      for strictly stronger evidence, so the relocated stub cannot displace
+      this equally ranked body. The arithmetic-jump and call-return rules
+      do not admit a missing method outside the dispatcher's own body.
+
+      `.venv/bin/python -m pytest -q build/task13_f20_short_string_prefix_test.py
+      > build/task13-f20-red.log 2>&1`: **1 failed**, exit **1**, because
+      the relocated stub wrapper is absent. The reproducer and pinned-PE
+      decode (`build/task13-f20-pe-evidence.txt`) remain ignored. No change
+      to the four-pair guard, tie-breaking rule, or game-specific entry seed
+      was invented; this requires an orchestrator decision.
+
+  Module/exception re-evaluation: this run's only missing-module line is
+  `LoadLibrary("msctf.dll"): no shims for that module, reporting it as
+  missing` at line 307. It has no `uxtheme.dll` or `d3dxof.dll` lookup,
+  `GetLastError`, `FormatMessageW`, `RaiseException`, or `RtlUnwind` call.
+  It therefore does not re-establish the prior error-126/checkpoint path,
+  nor prove that path fixed. No module shim was added. The optional
+  `GetLogicalProcessorInformation`, `RtlCompareUnicodeString`, and
+  `InitializeConditionVariable` misses remain unchanged.
+
+  **Acceptance remains unmet.** Findings 18 and 19 are fixed and the new
+  headless build succeeds. Task 13 stops at finding 20's equal-evidence
+  admission boundary before reaching the VCL message loop.
