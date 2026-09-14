@@ -2969,3 +2969,193 @@ UTF-16 records rather than C strings.
   polls are startup processing, not proof of a sustained TApplication.Run
   loop. Stop at the new compatibility/dispatch decisions, with no changes
   to other tasks, game configuration, assets or platforms.
+
+
+- **2026-09-15 — Task 13 continued: display enumeration and popped returns
+  (findings 27–28).** The approved fixes are kit commits **`853802b`**
+  (`Runtime: enumerate display modes with uninitialized DEVMODE sizes`) and
+  **`6c12096`** (`Translator: return directly through a proven popped continuation`).
+  Earlier findings and their run results above remain unchanged.
+
+  27. **Fixed: mode zero accepts uninitialized dmSize.** The previous run's
+      `EnumDisplaySettingsW` / `List index out of bounds (0)` sequence came
+      from rejecting the caller's dmSize=4 before returning a mode. The shim
+      already read offset **68**, so this was not an ANSI-offset mistake.
+      Enumeration now fills exactly **220 bytes** for W, sets dmSize=220 and
+      dmDriverExtra=0, and accepts any incoming size. The previously absent
+      ANSI export shares the mode source, fills **156 bytes**, and sets its
+      corresponding header fields. Both support mode zero, current (-1) and
+      registry (-2); mode one ends enumeration. Invalid guest buffers still
+      fail without being written.
+
+      The decision's proposed W display offsets were corrected: bpp/width/
+      height/flags/frequency are **168/172/176/180/184**, not the ANSI
+      **104/108/112/116/120**. DEVMODEW widens both dmDeviceName and dmFormName;
+      see [the Microsoft structure definition](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-devmodew).
+      The pinned guest reads width at EBP-0x30 relative to its EBP-0xdc
+      record, confirming offset **172**. Runtime tests cover sizes 0, 4 and
+      the standard size for each encoding, dimensions, driver-extra zero,
+      current/registry queries, termination, and a sentinel beyond the record.
+
+  28. **Fixed statically: a JMP through the popped caller return bypasses
+      entry dispatch.** The translator tracks ESP relative to entry, an EBP
+      frame offset for LEAVE, and registers populated by a 32-bit POP at
+      delta zero. Register writes (including partial and implicit writes)
+      invalidate the corresponding fact; a later stack restore does not
+      invalidate a saved return register. CALL has the approved net-zero
+      stack effect. Control-flow joins retain agreeing facts, alternate
+      entries begin independent call frames, and unmodelled instructions or
+      unproven indirect destinations conservatively discard facts.
+
+      A proven JMP emits `c->eip = c->r[reg]; return;` without another pop,
+      lookup or dispatch. Runtime `recomp_jump` remains entry-first. The
+      synthetic driver regression includes a CALL continuation admitted as
+      a separate entry and a cleanup CALL after POP EDX. The instruction
+      regression compares POP EDX / ADD ESP,8 / JMP EDX against Unicorn with
+      two arguments. That oracle case already passed via the old fallback;
+      the driver assertions exposed the double-dispatch defect. An older
+      short-jump/except regression now expects the static return while
+      retaining its CALL-length and call-return-table assertions.
+      Direct decoding of the hash-verified PE confirms **`0080a4ad`** is the
+      proven return in **`0080a480`**; evidence is in ignored
+      `build/task13-f28-decode.txt`.
+
+
+      Regeneration succeeded in **478.2 seconds**: **29,042 functions**,
+      **42,548 entries**, and **zero jump-table entries dispatching nowhere**.
+      Generated `fn_0080a480` now emits the direct return at `0080a4ad`.
+      The first run with both fixes (`build/task13-run-28.log`) executed
+      **1,056,525 PeekMessageW calls** for **180.0 seconds**, then handled
+      the wall-clock close and called **ExitProcess(0)**. No stack-address
+      SIGSEGV, missing checkpoint, or unknown-target abort occurred. The
+      host process nevertheless returned **1**, because **zero frames**
+      were presented. The list error still appeared at lines **676003**
+      and **676272**, which led to the next finding.
+
+  29. **Fixed: display enumeration exposed only the desktop mode rather
+      than all supported modes.** In `task13-run-28.log`, lines **675975–
+      675976** enumerate mode zero and then stop; the list error follows.
+      The listing at `00bed7b0` through `00bed813` filters fullscreen modes
+      to **800x600**, **1280x720**, or **1920x1080**. The shim's sole desktop
+      fallback, **1024x768x32**, matches none. The DirectDraw shim already
+      offers all three sizes through its existing supported-mode table.
+
+      Kit commit **`6e755d5`** (`Runtime: enumerate supported display modes
+      through the DirectDraw table`) shares that table with indexed ANSI
+      and wide display queries. Current/registry requests still query the
+      active mode or desktop fallback. No new mode list or game-specific
+      exception was invented; `RECOMP_DDRAW_MODES` and the runtime mode
+      setter remain the single source of offered modes. Runtime-only
+      binaries retain their one-mode fallback through a weak default.
+      This follows the approved rule to stop only past the last offered
+      mode and the [indexed API contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaysettingsw).
+
+      The regression uses a controlled one-mode list for the dmSize checks,
+      then a two-mode list and verifies both encodings enumerate each size
+      and terminate. It failed **10 checks** before the implementation;
+      afterward the runtime suite passes **877 checks**, the GDI suite
+      **73 checks**, and DirectX **138,819 checks**. This was a runtime-only
+      rebuild; the translation from finding 28 was retained.
+
+  30. **New boundary: the startup-settings modal loop has no headless
+      presentation path.** In `build/task13-run-29.log`, line **1960** creates
+      `tfrmlaunchsetting`, title **SoAOS Startup Settings**. Lines **675975–
+      675989** enumerate the supported modes, and line **676165** creates a
+      control displaying **800 x 600 (Original)**. The two list exceptions
+      are absent. This is launcher message processing, not proof that the
+      main game's TApplication.Run or main menu has been reached.
+
+      The pinned PE resolves the virtual call at `00bfeac8` through VMT
+      **`00beb4b4 + 0x168`** to **`00a0c690`**. That modal routine repeatedly
+      calls **`00a11490`** at **`00a0c83a`** while its modal result at **+0x2ec**
+      remains zero. `00a11490` calls `00a11364`, which retrieves messages at
+      `00a11378` and `00a113af`. The later game-entry work waits for the
+      startup form to finish.
+
+      Source and binary inspection expose two presentation limitations:
+      `ShowWindow`/`InvalidateRect` mark an update pending, but `peek_message`
+      only drains the existing queue and does not synthesize WM_PAINT for
+      dirty windows. The run has no BeginPaint/EndPaint calls. Separately,
+      `nm -m build/recomp/pop_headless` reports **weak external
+      _host_display_present_window**: headless links the no-op default in
+      `runtime/mods_seam.cpp`, while the GDI presenter in `host/present.cpp`
+      is linked into other hosts. Its frame counter measures actual presents,
+      not message polls. Making this launcher draw/count frames, or choosing
+      an input action to leave it, needs a new host/paint/launcher decision;
+      no frame-counter substitution or automatic launcher action is added.
+
+      The final run executes **1,171,381 PeekMessageW calls** and **11
+      EnumDisplaySettingsW calls** (ten modes and the terminating query),
+      with no RaiseException, list error, unknown-target abort, or
+      BeginPaint/EndPaint call. At line **42258605** the host posts WM_CLOSE
+      after **180.0 seconds / zero frames**. Line **42259725** records
+      **ExitProcess(0)**; the host summary confirms zero presented frames
+      at **42259731** and guest exit code zero at **42259748**. The process
+      exit status is **1**, the headless host's no-presentation outcome.
+      The streaming count and selected lines are saved in ignored
+      `build/task13-run-29-summary.txt`.
+
+      Optional misses remain `GetLogicalProcessorInformation`,
+      `RtlCompareUnicodeString`, `InitializeConditionVariable`, and
+      `DirectXFileCreate`; missing modules remain `msctf.dll`, `d3dxof.dll`,
+      and `uxtheme.dll`. Startup passes all of these without an exception.
+
+  Validation for this continuation (commands run from the game root;
+  output files are ignored):
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f27-runtime-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f27-runtime-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py -k 'popped_return' > build/task13-f28-driver-red.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py -k 'Popped' > build/task13-f28-insns-before.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py > build/task13-f28-driver-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py > build/task13-f28-insns-green.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task13-f28-config.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task13-f28-seh.log 2>&1
+  .venv/bin/python tools/build.py --regenerate --target headless --jobs 8 > build/task13-f28-regenerate.log 2>&1
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames build/recomp/pop_headless > build/task13-run-28.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f29-runtime-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f29-runtime-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task13-f29-gdi.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task13-f29-dx.log 2>&1
+  .venv/bin/python tools/build.py --target headless --jobs 8 > build/task13-f29-headless.log 2>&1
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames build/recomp/pop_headless > build/task13-run-29.log 2>&1
+  ```
+
+  - Finding 27 runtime red: **875 checks, 13 failures, 1 skipped**, exit 1;
+    green: **869 checks, 0 failures, 1 skipped**, exit 0.
+  - Finding 28 driver red: **7 failed, 8 passed, 120 deselected**, exit 1.
+    The Unicorn reproducer already passed: **2 passed, 52 deselected**.
+    Final full suites: driver **135 passed**, instruction **54 passed**,
+    game config/literal checks **8 passed**, all exit 0.
+  - SEH native: **113 checks, 0 failures**, CTest **100% tests passed**,
+    exit 0. Finding 29 runtime red: **877 checks, 10 failures, 1 skipped**,
+    exit 1; green: **877 checks, 0 failures, 1 skipped**, exit 0.
+    GDI **73 checks, 0 failures** and DirectX **138819 checks, 0 failures**,
+    both CTest **100% tests passed**, exit 0. The runtime skip is the
+    existing image-import check when this image has no imported data symbols.
+  - Both headless builds exit 0 and link `pop_headless`; both retain the
+    existing linker warning reducing `__DATA,__common` alignment from
+    `0x8000` to `0x4000`. Only finding 28 required regeneration. Both runs
+    exit 1 at the host level, with guest ExitProcess(0) after the wall-clock
+    cap, as detailed above.
+  - Before each kit commit, `.venv/bin/python kit/tools/format.py --write`
+    formatted **269 files**; `.venv/bin/python kit/tools/check_repo.py`,
+    `.venv/bin/python kit/tools/check_game_literals.py`, and the staged
+    whitespace check passed. Outputs are in `build/task13-f27-*`,
+    `build/task13-f28-*`, and `build/task13-f29-*` logs.
+
+  The existing `build/task-k1-native.py` helper is retained because the root
+  test wrapper has no `-R` option. It delegates native configuration/builds
+  through the kit test/build tools and runs the named CTest suite; no compiler
+  is invoked directly. The actual switches are **RECOMP_MAX_FRAMES=600** and
+  **RECOMP_LOG=2**, not the plan's guessed switch names. MAX_FRAMES counts
+  presented frames, and the unchanged default MAX_SECONDS=180 ends these
+  runs. No platform, game config, asset, or optional-module stub was added.
+
+  **Task 13 remains incomplete.** The corrected runtime now services the
+  startup-settings modal message loop without the previous exceptions and
+  stack fault. It has not demonstrated the main TApplication.Run loop,
+  600 presented frames, or headless process exit 0. Stop at finding 30's new
+  painting/presentation/launcher boundary and record the kit pointer with
+  this partial outcome rather than using the plan's success claim.
