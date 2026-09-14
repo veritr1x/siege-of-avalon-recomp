@@ -903,3 +903,219 @@ UTF-16 records rather than C strings.
   - Formatting, staged source-boundary, game-literal and whitespace checks
     passed before the kit commit. Generated code, assets, logs and diagnostic
     scripts remain private and ignored; nothing is pushed.
+
+
+  **2026-09-14 continuation, after the orchestrator's per-game alignment decision:**
+
+  7. Finding 7 is resolved by kit **5f76196**, `Translator: configure
+     function-start alignment per game`. `game_config.load` supplies
+     `[translate] function_alignment = 16` when omitted and rejects values
+     that are not positive integers. Both function-start gates use the
+     configured alignment; their remaining instruction/padding checks and
+     the thunk rule remain. The stub documents 16. This game's setting is
+     **4**, citing the listed-start histogram's mod-16 peaks at 0, 4, 8, 12.
+     The promoted callback regression rejects alignment 16 and admits 4;
+     config tests cover the default, override, validation and translator
+     wiring, and this game's test requires 4.
+
+     The tests were observed failing before implementation: **4 failed,
+     1 passed** in the focused kit selection and **1 failed** in this
+     game's new assertion. Afterwards, the complete kit config/translator
+     config/driver suites passed **79 tests**, the game suite **5 tests**,
+     and the portable translator suites **147 passed, 1 skipped**.
+     A direct probe now admits `0x0082ce68`, and the regenerated table
+     contains `fn_0082ce68`. Regeneration **exits 0**
+     (`build/task13-f7-regenerate.log`): **280.8 s**, **32,931/35,373
+     functions**, **43,331 entry points**, **14,115 candidates rejected as
+     data**, 166 chunks, discovery converged in 19 rounds. The existing
+     linker section-alignment warning remains.
+
+     The new boot (`build/task13-run-07.log`) no longer logs the unknown
+     calendar callback. It still **exits 5** at the same `SIGBUS`, guest
+     EIP `0x0080ae6b`, before the message loop.
+
+  8. The remaining warning is
+     `SEH leave: no retired frame at ESP=0efffe1c`, followed later by the
+     string-assignment SIGBUS. The requested noninteractive LLDB launch
+     succeeds with `process launch --environment NAME=VALUE`.
+     Its ordinary `-o` commands after launch do not run on a crash in this
+     LLDB, so `-k 'bt 25' -k 'register read'` supplies the crash commands.
+     The first attempt inspected the previous binary while regeneration
+     ran (`build/task13-lldb.log`); the repeat inspected the rebuilt
+     alignment-4 binary (`build/task13-f8-lldb.log`). The latter backtrace is
+     `wr32 -> fn_0080ace4 -> fn_0080ae48 -> fn_0082c478 -> body_0082c4f0`.
+     It faults while decrementing an invalid Unicode-string reference count,
+     not in the preceding Move call. An additional frame-variable request
+     failed because the selected inlined frame had no `c`; the backtrace
+     and register dump before that error were produced successfully.
+
+     Breakpoints immediately before and after the call from `0x0082c53c`
+     to `0x0082cef8` isolate the earlier corruption
+     (`build/task13-f8-stack.log`). Before the call, ESP is `0x0efffe4c`
+     and EBP `0x0efffe9c`; on returning to the caller, ESP is incorrectly
+     `0x0efffe1c`, EBP `0x0efffe44`, and EIP still `0x0082d177`, the
+     initializer's internal continuation. Its generated RET at
+     `0x0082d16f` returned the host frame before the guest epilogue restored
+     the saved registers and stack.
+
+     The verified `functions/0082cef8.asm` establishes a nested frame
+     with `XOR EDX,EDX` at `0x0082cf3c`, followed by the three PUSHes and
+     `MOV FS:[EDX],ESP` at `0x0082cf47`. The old recognizer only accepted
+     absolute FS:[0] and FS:[EAX], so it found the outer frame but missed
+     this nested frame and its finally ownership. Kit **ab57dd4**,
+     `Translator: recognize SEH frames through zeroed registers`, recognizes
+     the equivalent register spelling when the contiguous XOR and three
+     PUSHes prove the base is zero. ESP is excluded because the PUSHes
+     change it. The existing EAX/absolute spellings remain; other TEB
+     operands do not acquire checkpoints. Emission uses the recognized
+     establishing site for the new spelling.
+
+     The new checkpoint and complete-cleanup driver regressions initially
+     gave **2 failed, 1 passed**. An additional ESP negative case failed
+     before the exclusion. Final focused suites give **72 passed**; the
+     portable suite gives **151 passed, 1 skipped**. A direct listing probe
+     now finds both establishing sites, `0x0082cf16 -> 0x0082d18d` and
+     `0x0082cf47 -> 0x0082d170`. This reuses the already approved shared
+     cleanup/RET ownership rule; it does not add a new return convention.
+
+
+     Regeneration with that fix **exits 0**
+     (`build/task13-f8-regenerate.log`): **345.0 s**, **33,098/35,540
+     functions**, **44,613 entry points**, **14,110 candidates rejected as
+     data**, 167 chunks, discovery converged in 21 rounds. The existing
+     linker section-alignment warning remains. The next boot passes the
+     calendar initializer without its SEH-leave warning or SIGBUS, reaches
+     VCL font/monitor/OLE setup, and creates the `tapplication` window.
+     It still **exits 6**, before the message loop, with the next finding.
+
+  9. **Blocked on runtime-generated window-procedure thunks.** The first
+     new unknown call is
+     `call to unknown target 01141fe2 (ESP=0efffcb8, return=0fdfff00): returning 0`.
+     LLDB stops there with the host chain
+     `recomp_unknown_call -> recomp_call -> guest_call ->
+     host_dispatch_to_wndproc -> send_message -> body_00a0f854`.
+     This is delivery of message `0x80` to HWND `0x00020008` after the
+     guest installed the heap address with `SetWindowLongW`.
+
+     The captured guest allocation (`build/task13-f9-thunks.bin`) proves
+     this is code generated at runtime, not another static callback
+     admission problem. Its layout is:
+
+     ```text
+     01141fe2  e8 1d f0 ff ff       CALL 01141004
+     01141fe7  18 03 a1 00         method = 00a10318 (data)
+     01141feb  10 de 0c 01         object = 010cde10 (data)
+     01141004  59                  POP ECX
+     01141005  e9 aa 3c 74 ff       JMP 00884cb4
+     ```
+
+     The second installed thunk, `0x01141fef`, has the same form, with
+     method `0x00a1129c` and the same object. Both methods and the common
+     dispatcher `0x00884cb4` are already in the generated table.
+     `functions/00884cdc.asm` verifies the producer: `VirtualAlloc` with
+     protection `0x40`, a shared two-byte opcode template plus relative
+     target, then 13-byte records with CALL opcode, relative displacement,
+     method and object. The static dispatcher consumes ECX's record,
+     invokes its method with the object in EAX, and returns with `RET 0x10`.
+     The kit's existing dispatch covers translated entries and import
+     trampolines; it has no executor/recognizer for these heap stubs.
+     Supporting that form requires an explicit runtime dispatch design.
+     No heap-code execution, hook address, or speculative workaround was
+     added. **No fix commit for finding 9.**
+
+     Later in the same run, `heap_alloc` refuses **547,618,816 bytes**
+     against its **218,103,808-byte** arena. A breakpoint at `RaiseException`
+     captures code `0x0eedfade`, seven information words, and exception
+     object `0x010f9030`: class **EOutOfMemory**, actual message
+     **`Put pf mdlory`** (already corrupted). This executable's VMT class
+     name pointer is at **VMT - 0x38**, pointing to the short string at
+     `0x0081fb5e`; the plan's guessed **-0x2c** points to code here.
+     The live debugger dump confirms the class and message
+     (`build/task13-f9-thunk-class.log`). The raise reaches `RtlUnwind`;
+     it does not reach `recomp_seh_unhandled`, so no unhandled-exception
+     printer was changed. The cause of the oversized allocation and
+     corrupted text is not yet established and is not attributed to the
+     thunk miss without evidence.
+
+     Teardown also logs unknown static target `0x008de6f8`, then
+     `no block entry for indirect jump to 0x0080a71a from 0x0080a4ad`,
+     with ESP `0x0080ac33` outside the guest stack. These remain follow-up
+     symptoms. A new optional lookup, `InitializeConditionVariable`,
+     returns zero and is followed by critical-section initialization;
+     `msctf.dll` is reported missing and execution proceeds. They remain
+     unresolved because implementation stops at the heap-thunk design
+     boundary. The previously approved zero misses for
+     `GetLogicalProcessorInformation` and `RtlCompareUnicodeString` remain.
+
+  This continuation's exact boot command was:
+
+  ```sh
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames build/recomp/pop_headless > build/task13-run-08.log 2>&1
+  ```
+
+  **Acceptance is not met:** exit **6**, **0** log lines matching
+  `PeekMessageW|MsgWaitForMultipleObjectsEx`, and **0** frame files. The
+  frame-count and import-log switches are the actual host/runtime switches,
+  not the plan's guessed names. No synchronous-thread override was used.
+  The executable's SHA-256 was rechecked and remains
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  Validation commands and observed results for findings 7-8:
+
+  - `.venv/bin/python -m pytest -q kit/tests/test_game_config.py
+    kit/tools/recomp/tests/test_translate_config.py
+    kit/tools/recomp/tests/test_translate_driver.py -k alignment
+    > build/task13-f7-red.log 2>&1`: **4 failed, 1 passed, 74 deselected**,
+    exit **1**, before implementation.
+  - `.venv/bin/python -m pytest -q tests/test_game_config.py -k alignment
+    > build/task13-f7-game-red.log 2>&1`: **1 failed, 4 deselected**,
+    exit **1**, before the game setting.
+  - `.venv/bin/python -m pytest -q kit/tests/test_game_config.py
+    kit/tools/recomp/tests/test_translate_config.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    > build/task13-f7-focused.log 2>&1`: **79 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q tests
+    > build/task13-f7-game-green.log 2>&1`: **5 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f7-portable.log 2>&1`: **147 passed, 1 skipped**,
+    exit **0**. The existing corpus-specific exclusions are retained.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py
+    kit/tools/recomp/tests/test_translate_driver.py -k edx
+    > build/task13-f8-red.log 2>&1`: **2 failed, 1 passed, 68 deselected**,
+    exit **1**, before implementation.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py
+    -k edx > build/task13-f8-stackbase-red.log 2>&1`:
+    **1 failed, 2 passed, 7 deselected**, exit **1**, before excluding ESP.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    > build/task13-f8-focused-final.log 2>&1`: **72 passed**, exit **0**.
+  - The same portable command with output
+    `> build/task13-f8-portable.log 2>&1`: **151 passed, 1 skipped**,
+    exit **0**.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f7-regenerate.log 2>&1` and the same command with
+    `> build/task13-f8-regenerate.log 2>&1`: both **exit 0**.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f8-runtime.log 2>&1`: **844 checks, 0 failures, 1 skipped**,
+    **100% tests passed**, exit **0**, label `game`.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f8-seh.log 2>&1`: **113 checks, 0 failures**,
+    **100% tests passed**, exit **0**, label `nogame`.
+    The existing helper calls the kit build/test wrappers; the current
+    `tools/test.py` CLI still has no `-R` option.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-final-config.log 2>&1`: **8 passed**, exit **0**.
+  - `lldb --batch -s build/task13-f9-thunk.lldb -- build/recomp/pop_headless
+    > build/task13-f9-thunk.log 2>&1` and the class-offset-corrected
+    `build/task13-f9-thunk-class.lldb` script with output in
+    `build/task13-f9-thunk-class.log`: both **exit 0**, capturing the
+    thunk, callback stack and exception object. The scripts launch with
+    `process launch --environment RECOMP_MAX_FRAMES=600
+    --environment RECOMP_LOG=2 --environment RECOMP_FRAMES=build/task13-frames
+    --environment RECOMP_PROFILE_DIR=build/task13-profile`.
+  - Formatting, staged source-boundary, game-literal and whitespace checks
+    passed before each kit commit. Generated output, logs, debugger scripts
+    and guest-memory captures remain ignored; nothing is pushed.

@@ -2,11 +2,13 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` a8d0a94 preserves pushed RET continuations, keeps
-  speculative SEH bodies prunable, and dispatches computed jumps within
-  unrolled routines. Headless initialization advances to calendar callbacks;
-  a callback rejected by the alignment heuristic and a later SIGBUS still
-  prevent reaching the VCL message loop (Task 13).
+- Kit `siege-delphi` ab57dd4 preserves pushed RET continuations, keeps
+  speculative SEH bodies prunable, dispatches computed jumps within unrolled
+  routines, and supports per-game function alignment and SEH frames through
+  zeroed registers. With Delphi's 4-byte alignment, headless initialization
+  passes the calendar callbacks and reaches VCL window creation; generated
+  window-procedure thunks on the guest heap and subsequent exception/teardown
+  failures still prevent reaching the message loop (Task 13).
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas

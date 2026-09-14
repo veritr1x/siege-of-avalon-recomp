@@ -30,6 +30,8 @@ guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 developer_exe = "original/gog/Siege.exe"
 
 [translate]
+# Listed-start histogram peaks at mod-16 offsets 0, 4, 8, 12: Delphi uses 4-byte alignment.
+function_alignment = 4
 # Ghidra listing directory holding functions.tsv and functions/*.asm,
 # relative to the repository root. tools/analyze.py exports them.
 listings = "analysis/decompiled/Siege.exe"

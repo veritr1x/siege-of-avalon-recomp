@@ -54,6 +54,9 @@ class SiegeConfigTests(unittest.TestCase):
                       "RECOMP_GLOBAL_ENTITY_BASE_COUNT", "RECOMP_TOUCH_KEYPAD_HIDDEN 0"):
             self.assertIn("#define " + macro, self.header)
 
+    def test_delphi_function_alignment(self):
+        self.assertEqual(self.cfg["translate"]["function_alignment"], 4)
+
     def test_unidentified_addresses_stay_in_the_sentinel_padding(self):
         """Until a hook is found, it must point where the game never looks."""
         addresses = [self.cfg["translate"]["animation_counter"]]
