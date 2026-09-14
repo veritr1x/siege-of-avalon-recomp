@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- Headless bring-up reaches Delphi locale initialization with kit `siege-delphi`
-  61d5b95: computed returns now resume their callers; a skipped Delphi cleanup
-  continuation still blocks the VCL message loop (Task 13).
+- Kit `siege-delphi` a47962d adds RET dispatch through pushed interior
+  continuations; full regeneration is blocked by overlapping speculative
+  SEH-body ownership, before another headless run (Task 13).
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas

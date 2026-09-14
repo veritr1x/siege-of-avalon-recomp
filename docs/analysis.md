@@ -575,3 +575,107 @@ UTF-16 records rather than C strings.
   - Formatting, game-literal, staged source-boundary and whitespace checks
     passed before the kit commit. Run logs and debugger artifacts remain
     ignored under `build/`; no generated code was edited and nothing was pushed.
+
+  **2026-09-14 continuation, after the orchestrator's interior-RET decision:**
+
+  4. Kit **a47962d**, `Translator: keep finally returns in their establishing
+     body`, implements the approved rule. For a body containing pushed
+     instruction-boundary continuations, every RET pops its target, applies
+     any immediate stack adjustment, and switches to an interior label or
+     returns normally through the default arm. Bodies without those targets
+     retain plain RET. The adjacent-pair lowering remains for external
+     continuations, preserving finding 1's omitted-epilogue tests.
+     The private cleanup reproducer is now an instruction regression; a
+     second oracle case covers `RET imm16`. Driver cases cover non-boundary
+     and external immediates, shared alternate entries, fall-through and
+     direct-jump cleanup, separately listed cleanup, recovered establishing
+     functions, and an epilogue owned by a speculative prefix. These cases
+     first failed, then passed after implementation. This is **unit-level
+     validation of finding 4, not a successful regenerated game run**.
+
+     The listing also omits the epilogue beyond the shared cleanup's RET.
+     Recovery identifies the cleanup from the untyped SEH stub's landing
+     JMP, requires a normal edge from the establishing body, and adopts the
+     cleanup and the continuation pushed immediately before that edge.
+     Existing independently named cleanup entries become wrappers into the
+     establishing body. Adoption follows only the target's reachable suffix,
+     so an unrelated speculative prefix is not copied into the real body.
+
+     Full-corpus verification exposed issues not present in the initial
+     synthetic tests. The first regeneration was interrupted (exit **254**)
+     after profiling showed repeated owner-map copies; single-instruction
+     decoding removed that overhead. The next translation took **102.3 s**,
+     but compilation exited **1** with a duplicate `fn_0096adcb`. The SEH
+     resolver was separating a cleanup after it had been adopted by a
+     recovered establishing function. Recording the established ownership
+     fixed that interaction, with a failing-then-passing driver regression.
+     The following regeneration exited **1** because adopting an epilogue
+     also adopted an invalid prefix (`fn_00b5ae10` dispatched to `00b5ade0`).
+     Recovering only the reachable suffix fixed that case, again with a
+     failing-then-passing regression. These corrections were formatted and
+     amended into the single finding-4 kit commit above.
+
+  5. The final regeneration still exits **1**:
+     `fn_00b5add0 dispatches to 00b5ade0, which is not an entry point`.
+     This is a further ownership boundary. PE recovery from `00b5add0`
+     starts in data, conditionally branches to `00b5ae16`, and also has an
+     invalid fall-through at `00b5ade0`. The valid branch reaches SEH setup
+     and normal cleanup also reached by the separately recovered prologue at
+     `00b5ae10` (`PUSH EBP; MOV EBP,ESP`). The earlier speculative block
+     therefore contains the same establishing instructions. Marking its
+     shared cleanup as owned promotes the speculative body to structural SEH provenance, preventing
+     the existing pruning pass from discarding its invalid prefix. Promoting
+     every overlapping body is incorrect; separating the cleanup again
+     loses the approved single-body RET behavior. A rule is needed to assign
+     ownership across overlapping recovered bodies, or retain valid alternate
+     entries while excluding an invalid primary prefix. There is **no fix
+     commit for finding 5**; work stops at this design boundary as instructed.
+
+     `build/task13_overlapping_owner_test.py` is an ignored synthetic driver
+     reproducer. It independently fails the same gate: `fn_00600fe0 dispatches
+     to 005f0feb, which is not an entry point`, **1 failed**. No guest address
+     was added to kit source and no dispatch gate was bypassed.
+
+  No new headless run was made after these edits because regeneration did not
+  produce a successful build. The existing `build/recomp/gen/` is from the
+  earlier compile-failing attempt; the next implementation must regenerate,
+  not merely rebuild that output. The previous `task13-run-04.log` remains the
+  last actual boot result; its exit **5** and zero message-loop calls are
+  historical, not validation of kit a47962d. The intended next run retains
+  `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1`, with
+  `RECOMP_PROFILE_DIR=build/task13-profile` and
+  `RECOMP_FRAMES=build/task13-frames`. No thread override was added.
+  Task 13's **600-frame, exit-0 acceptance remains unmet**. The pinned
+  executable's SHA-256 was freshly verified again.
+
+  Validation from the game repository root (local logs under `build/`):
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    -k Cleanup`: initial **2 failed, 1 passed, 28 deselected**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k 'return_switch or finally_cleanup'`: initial **3 failed, 2 passed,
+    22 deselected**. Expanded ownership cases subsequently reproduced the
+    listed-owner, recovered-owner and speculative-epilogue failures before
+    their fixes (`task13-f4-ownership-red.log`,
+    `task13-f4-recovered-owner-red.log`, `task13-f4-speculative-red.log`).
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_seh.py`: **75 passed**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py`:
+    **120 passed, 1 skipped**, retaining the prior corpus exclusions.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8`:
+    final exit **1**, log `build/task13-f4-regenerate-04.log`, finding 5 above.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose`:
+    exit **0**, **844 checks, 0 failures, 1 skipped** (CTest label `game`).
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose`:
+    exit **0**, **113 checks, 0 failures** (CTest label `nogame`).
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py`:
+    **7 passed**.
+  - `.venv/bin/python -m pytest -q build/task13_overlapping_owner_test.py`:
+    **1 failed**, the unresolved design-boundary reproducer.
+  - Formatting, game-literal, staged source-boundary and whitespace checks
+    passed before each kit commit/amendment. Both repositories remain local;
+    no generated code, game assets, run logs or diagnostic scripts are committed.
