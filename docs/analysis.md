@@ -1417,3 +1417,168 @@ UTF-16 records rather than C strings.
   bypass, new shim assumption or unrelated host/debugger repair was made.
   Work stops with the tested x87 fix preserved and findings 11/12 awaiting
   a working live probe or another approved diagnostic route.
+
+- **2026-09-14 — Task 13 continuation: decoded CALL returns fixed;
+  heap diagnostics identify a register-pushed RET adapter.** Continued from
+  kit `4a47e88` and game commit `0dde4a1`, using the orchestrator's decisions
+  on findings 11 and 12. Earlier findings above remain the historical record.
+  No debugger was used in this continuation.
+
+  12. **Fixed emission, not decoding — kit `c550d31`
+      (`Translator: push decoded CALL continuations at block boundaries`).**
+      The old generated `fn_0080a70f` contained all three correctly aligned
+      CALL instructions, but its last CALL at `0x0080a719` pushed
+      `0x0080a71a`. A recovered body's estimated end is the last instruction
+      address plus one; emission used that estimate for its final CALL.
+      `Function.measure` already retained the actual decoded next address
+      in `fallthrough`, `0x0080a71e`. Emission now uses that decoded address
+      when available, retaining the listing fallback otherwise. The new
+      driver regression establishes an SEH frame, jumps with EB over an E9
+      handler stub and three omitted CALLs, and includes a DoneExcept-style
+      `POP EDX; JMP EDX` helper. It failed on the final pushed address before
+      the change and passes afterwards. Regenerated C now pushes
+      `0x0080a71e`; the subsequent runs no longer report the indirect jump
+      into the CALL displacement at `0x0080a71a`.
+
+  11. **Permanent refusal diagnostic — kit `1686c72`
+      (`Runtime: report guest context when heap requests exceed the arena`).**
+      `heap_alloc` now logs the active guest context's registers, up to 12
+      EBP-linked returns, and up to 24 CALL-preceded stack candidates for
+      frameless RTL helpers. The isolated native child test observes the
+      actual refusal log and checks the size, register values and frame
+      return. Its two new diagnostic assertions failed before implementation.
+      The rebuilt run still reports:
+
+      ```text
+      heap_alloc: refusing a 547618816 byte request, the arena is 218103808 bytes
+      heap_alloc: EIP=00805310 EAX=20a3fe1e ECX=8bd68b00 EDX=04147fc4 EBX=010f9424 ESP=0efffed8 EBP=20a3fe1e ESI=20a40000 EDI=7ffffffd
+      ```
+
+      EBP is currently an allocation size, so the safe frame walker emits
+      no EBP frames here. The stack candidates include, in order,
+      `0080578d 00806ece 0080ac27 0080b0b4 0088c840 0088c96e 0088c840
+      0088cf2a 0088ceef 0088c840 0088ceef 00861f3e 00862871 00862dd3
+      00bfe47d 0080a6fc 0080a768 00811f0f 00bfea50`. These are candidates,
+      including corrupt data slots, rather than a claimed exact call stack.
+      They confirm the dictionary insertion and string-allocation path.
+
+  13. **New design boundary explaining finding 11: RET as a vtable-adapter
+      jump; no fix commit.** An ignored guest-memory snapshot taken at the
+      refusal identifies the live dictionary at `0x01116070`, its comparer
+      interface at `[dictionary+0xc] = 0x010e5a60`, and the interface vtable
+      at `0x008fe6d0`. The indirect CALL at `0x0088c83d` therefore selects
+      `[vtable+0x10] = 0x008fe67a`. The pinned PE and generated C agree on
+      this six-instruction adapter:
+
+      ```text
+      008fe67a ADD EAX,-8
+      008fe67d PUSH EAX
+      008fe67e MOV EAX,[EAX]
+      008fe680 MOV EAX,[EAX+8]
+      008fe683 XCHG [ESP],EAX
+      008fe686 RET
+      ```
+
+      The adjusted object is `0x010e5a58`; its vtable is `0x008fe470`, whose
+      method at offset 8 is `0x008ffffc`. On x86, the adapter's RET pops that
+      method address and executes the method, leaving the original caller's
+      return address for the method's eventual RET. Generated C instead
+      pops the method into EIP and returns directly to `fn_0088c830`, without
+      calling the method. This function has no pushed immediate continuation,
+      so the approved finding-4 rule deliberately emits a plain RET.
+
+      Consequently `fn_0088c830` resumes with ESP four bytes below the correct
+      value. Its POP ESI consumes `0x0088c840`, its POP EBX consumes the saved
+      string pointer, and its RET consumes the saved dictionary pointer.
+      The snapshot matches those effects: the original UTF-16 string at
+      `0x010f9424` is `TMenuItem`, but the later insertion's `[EBP+0xc]` at
+      `0x0effff30` contains `0x0088c840`. `0x0080b0a0` reads the preceding
+      instruction bytes as length `0x1051ff08`, causing the oversized
+      request. This identifies a translator stack/control-flow error, not
+      a shim argument count, resource length, memory-status or disk-size
+      answer.
+
+      Private regression `build/task13_vtable_ret_test.py` uses the same
+      adapter with a synthetic object/vtable and a method that sets EAX then
+      returns. The existing instruction harness compares it with Unicorn:
+      **1 failed**, with `EAX: native 0e100100 unicorn 12345678` and
+      `ESP: native 0effff00 unicorn 0effff04`. No failing regression or
+      special-case game address was committed. This requires an explicit
+      extension of RET handling to register-pushed/XCHG targets; the approved
+      immediate-continuation rule and heap-code interpreter do not cover it.
+      Work stops here rather than changing all RET dispatch semantics.
+
+  Commands and observed checks in this continuation:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k except_calls > build/task13-f12-red.log 2>&1`: **1 failed,
+    62 deselected**, exit **1** before the emission fix.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py > build/task13-f12-green.log
+    2>&1`: **115 passed**, exit **0** after the fix.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f11-diag-red.log 2>&1`: **857 checks, 2 failures,
+    1 skipped**, exit **1** before implementing the refusal diagnostic.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f11-diag-green.log 2>&1`: **857 checks, 0 failures,
+    1 skipped**, exit **0**, label `game`.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f12-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`. The existing ignored wrapper drives `tools/test.py`;
+    this checkout's root CLI does not accept the plan's `-R` option.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f12-portable.log 2>&1`: **171 passed, 1 skipped**, exit **0**,
+    retaining the earlier corpus exclusions.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f12-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q build/task13_vtable_ret_test.py
+    > build/task13-f13-red.log 2>&1`: **1 failed**, exit **1**, the intentionally
+    unresolved design-boundary reproducer described above.
+  - `.venv/bin/python kit/tools/format.py --write`, staged
+    `kit/tools/check_repo.py`, `kit/tools/check_game_literals.py`, and
+    whitespace checks passed before each kit commit. The original executable
+    hash was checked again and remains the pinned SHA-256.
+
+  Build and run evidence:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f12-regenerate.log 2>&1`: **exit 0**. Translation took
+    **329.5 s**, still **33,098/35,540 functions**, **44,613 entry points**,
+    and 167 chunks. The existing linker section-alignment warning remains.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-11.log 2>&1`: **exit 6**.
+  - For the private snapshot only, temporary generic code read
+    `recomp_env("HEAP_REFUSAL_DUMP")` and wrote guest memory to its path on
+    refusal. `.venv/bin/python tools/build.py --target headless --jobs 8
+    > build/task13-f11-probe-build.log 2>&1` passed; the same run switches plus
+    `RECOMP_HEAP_REFUSAL_DUMP=build/task13-heap-refusal.bin` wrote
+    `build/task13-f11-probe.log` and exited **6**. The diagnostic source was
+    then removed, and `git -C kit diff --exit-code` passed. The snapshot and
+    reproducer remain private, ignored inputs under `build/`; no snapshot
+    switch was added to the committed runtime.
+  - `.venv/bin/python tools/build.py --target headless --jobs 8
+    > build/task13-f11-restored-build.log 2>&1`: **exit 0**, rebuilding the
+    committed source after removing the temporary probe.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-12.log 2>&1`: **exit 6**.
+    Final error: `SEH: registration outside guest stack
+    (registration=0080ac63 target=00000000 FS=0fe00000 ESP=0080ac63)`;
+    the abort reports **EIP=fe0244c7, ESP=0080ac63, EBP=8338700e**.
+    The previously observed unknown teardown target `008de6f8` remains;
+    neither teardown symptom is treated as an independent design problem
+    before correcting the proven earlier stack corruption.
+
+  **Acceptance remains unmet:** the final run has **0**
+  `PeekMessageW|MsgWaitForMultipleObjectsEx` lines and **0** frame files,
+  exits **6**, and never demonstrates the VCL message loop. The actual
+  `RECOMP_MAX_FRAMES=600` cap counts presented frames. The two approved
+  optional GetProcAddress misses remain unchanged, as does the unproven
+  InitializeConditionVariable miss. No synchronous-thread override, hash
+  bypass, unrelated shim, or debugger repair was introduced. The tested
+  commits are retained; the next required decision is how to recognize and
+  dispatch the register-pushed vtable-adapter RET exactly once.

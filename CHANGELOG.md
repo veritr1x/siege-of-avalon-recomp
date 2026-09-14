@@ -2,14 +2,15 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` 4a47e88 preserves pushed RET continuations, keeps
+- Kit `siege-delphi` 1686c72 preserves pushed RET continuations, keeps
   speculative SEH bodies prunable, dispatches computed jumps within unrolled
   routines, supports per-game alignment and zero-register SEH frames, and
   interprets bounded compiler-generated guest thunks. Exact x87 integer
-  copies now preserve resource strings and 64-bit records. Headless startup
-  still stops at an oversized allocation and invalid teardown jump before
-  reaching the VCL message loop (Task 13); live re-diagnosis is blocked by
-  the debugger stalling before `main`.
+  copies now preserve resource strings and 64-bit records. Recovered CALLs
+  push their decoded continuation, and oversized heap requests report guest
+  registers and return candidates. Headless startup remains blocked before
+  the VCL message loop (Task 13): a vtable adapter uses a register-pushed
+  RET target that the translator does not yet dispatch.
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas
