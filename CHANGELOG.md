@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Headless bring-up reaches Delphi locale initialization with kit `siege-delphi`
+  f3e6f4c; computed-return handling still blocks the VCL message loop (Task 13).
+
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas
   with DIB blits and bitmap-font text, FMOD 3 and the MIDI helper as shim

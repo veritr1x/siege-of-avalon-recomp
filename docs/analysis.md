@@ -384,3 +384,111 @@ UTF-16 records rather than C strings.
   87 translator tests, 37 kit tests, all green; the kit's legacy hook suite
   wants another game's corpus and is excluded from the portable run.
   Nothing has been run against the game yet: that is Phase C.
+
+- **2026-09-14, first headless run: blocked before the message loop (Task 13).**
+  Started from the existing SEH translation and headless binary at kit
+  f93fdc6, as instructed. The pinned executable's SHA-256 was freshly
+  verified. The host reads `RECOMP_MAX_FRAMES`, not the plan's guessed
+  `RECOMP_HEADLESS_FRAMES`; import tracing is `RECOMP_LOG=2`, not
+  `RECOMP_LOG_IMPORTS=1` or `RECOMP_LOG=verbose`. The first diagnostic run
+  with the latter value exited 139 without import traces; the correctly
+  traced rerun exited 6. LLDB located the bad read in `body_0080a6b8`.
+
+  Findings, in order:
+
+  1. `call to unknown target c70a7301 (ESP=0effff8c, return=0080a6fc)`:
+     Delphi's unit initializer at `00bfd000` ends its listed body with
+     `PUSH 0xbfd0de; RET`. The continuation at `00bfd0de` restores EBP.
+     The translator returned to the host caller before that continuation,
+     corrupting the initialization-table walk. Kit **89d663f**,
+     `Translator: follow adjacent push-ret continuations without skipping
+     epilogues`, lowers this adjacent pair on the PUSH path while leaving
+     a separate entry at the shared RET intact. It preserves the guest
+     stack write and resolves omitted continuations as direct branches.
+     The instruction regression first failed with ESP/EBP mismatches
+     against Unicorn. Two driver cases then reproduced the omitted-target
+     gate failure before the resolver fix. An initial test setup reused an
+     existing synthetic address and failed to compile; it was corrected
+     before observing the semantic failure.
+
+  2. Regeneration reported `fn_00bfea40 dispatches to 00bfec13, which is
+     not an entry point`. Recovery reached the continuation's call to
+     `0080a9f0`, then decoded following data and rejected the block.
+     The listing for `0080a9f0` has a closed shutdown loop with no return
+     path; its callers retain unreachable instructions, so the existing
+     inference from a listing's final CALL did not identify it. Kit
+     **f3e6f4c**, `Translator: stop recovery at calls to closed
+     nonreturning loops`, conservatively recognizes closed control flow.
+     Two synthetic driver cases failed before the fix. Return paths,
+     outward and computed jumps, LOOP/JECXZ escapes, and calls inside a
+     closed loop are covered. The first two regeneration attempts exited
+     1; regeneration after this fix exited 0 and linked `pop_headless`.
+
+  3. The rebuilt run reports `recomp: no block entry for indirect jump to
+     0x0080e093 from 0x0080bdf7` and exits **6**. The listing
+     `functions/0080bd50.asm` shows a variable-argument string helper
+     ending in `POP EAX; LEA ESP,[ESP + EDX*0x4]; JMP EAX`: this is a
+     computed return. `0080e093` is the caller's instruction after
+     `CALL 0x0080bd50` in `functions/0080df4c.asm`, already translated
+     inside that caller. There is **no fix commit**: distinguishing a
+     computed return from a tail jump needs a translator continuation
+     design decision. Merely adding that address to the dispatch table
+     risks running the caller's continuation twice because its original
+     host CALL remains pending. Implementation stopped at this boundary,
+     as requested. The private synthetic oracle reproducer
+     `build/task13_computed_return_test.py` fails with
+     `ESP: native 0effff14 unicorn 0effff10`; it is not committed.
+
+  Final run command (local output: `build/task13-run-03.log`):
+
+  ```sh
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 \
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames \
+    build/recomp/pop_headless > build/task13-run-03.log 2>&1
+  ```
+
+  This run reaches `GetVersionExW`, the runtime's locale registry probes,
+  `IsValidLocale` and `GetLocaleInfoW`. It has **0** import-trace lines for
+  `PeekMessageW` or `MsgWaitForMultipleObjectsEx`, and no presented frames.
+  No unhandled Delphi `RaiseException` was reached, so no exception object
+  class/message was available to diagnose. No thread override was used.
+  The existing mod-loader-failure notice also remains in the boot log;
+  its consequence after initialization is unverified. Task 13 acceptance
+  is **not met**; no window, menu, rendering or gameplay success is claimed.
+
+  Validation from the game repository root (all logs under `build/`):
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    -k epilogue`: **1 failed, 26 deselected** before the first fix.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k loaded_image_base`: **2 failed, 2 passed, 7 deselected** before
+    resolving omitted PUSH/RET continuations.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k noreturn_loop`: **2 failed, 11 deselected** before the second fix.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_seh.py`: **56 passed**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py`:
+    **101 passed, 1 skipped**. The three exclusions retain Task 12's
+    boundary around the legacy corpus-dependent suites.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8`:
+    final exit **0**, translation **89.74 s**, **38,197** entries; empty
+    `failures`, `table_gaps`, and `table_sites_undecoded`. The existing
+    linker alignment warning remains. Log: `build/task13-f2-regenerate.log`.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose`:
+    exit **0**, **844 checks, 0 failures, 1 skipped**; the recorded helper
+    uses the kit's configure/build/test helpers because the ordinary CLI
+    still has no `-R` selector. This run is labelled `game` by CTest.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose`:
+    exit **0**, **113 checks, 0 failures**.
+  - `.venv/bin/python -m pytest -q tests`: **4 passed**;
+    `.venv/bin/python -m pytest -q kit/tests/test_game_literals.py`:
+    **3 passed**.
+  - `.venv/bin/python -m pytest -q build/task13_computed_return_test.py`:
+    **1 failed**, the unresolved computed-return blocker described above.
+  - Kit formatting, game-literal checking, staged source-boundary checking
+    and whitespace checks passed before each kit commit. All commits are
+    local; no sibling checkout, player saves or other platforms were changed.
