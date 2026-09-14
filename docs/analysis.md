@@ -2053,3 +2053,132 @@ UTF-16 records rather than C strings.
   no-live-checkpoint unwind failure have not been re-evaluated under this
   change, and no 600-frame/message-loop success is claimed. Task 13 stops at
   finding 16's pruning/ownership decision.
+
+- **2026-09-14 — Task 13 continued: required dispatches fall back to the
+  listed span owner (finding 16).** The preceding findings remain the record
+  of each earlier run. Kit commit `235b9a6` (`Translator: recover pruned
+  dispatch aliases through listed spans`) applies the orchestrator's approved
+  ownership rule after speculative pruning.
+
+  16. **Cleanup aliases lost with their speculative owners — fix
+      `235b9a6`.** The motivating gate lines were `fn_00b9c2ff dispatches to
+      00b9c2e9`, `fn_00be4cf7 dispatches to 00be4ce9`, and
+      `fn_00be4fd6 dispatches to 00be4fc8`, each reporting that the target
+      was not an entry point. Pruning removed the owning speculative bodies
+      and their aliases while protected landing JMPs still required them.
+      A post-pruning worklist now recovers required dispatches under the
+      original listed function whose span contains the target. It retains
+      the next-listed-function boundary, requires clean decoding without
+      overlap with the listed owner's instructions, and repeats for newly
+      exposed pushed continuations, SEH entries and direct dispatches.
+      Speculative owners remain pruned. Missing spans and failed decodes
+      retain the dispatch gate.
+
+      The private reproducer is promoted into `test_translate_driver.py`.
+      It asserts that the cleanup wrapper belongs to the listed span owner
+      after both speculative owners disappear. Variants cover a two-link
+      pushed-continuation chain, a target before every listed span, and a
+      malformed cleanup. The chain uses cleanup between PUSH and RET so it
+      exercises span recovery independently of adjacent PUSH/RET discovery.
+
+  Verification:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k pruned_cleanup_alias > build/task13-f16-promoted-red.log 2>&1`:
+    **2 failed, 2 passed**, exit **1**, before implementation; the missing
+    alias is `fn_00601085` dispatching to `00601041`.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f16-green.log 2>&1`: **134 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f16-portable.log 2>&1`: **190 passed, 1 skipped**,
+    exit **0**. The excluded files depend on another game's private corpus.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f16-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f16-format.log 2>&1`: **268 handwritten source files
+    formatted**, exit **0**. `kit/tools/check_repo.py`,
+    `kit/tools/check_game_literals.py`, and the staged whitespace check
+    passed before the kit commit.
+  - `shasum -a 256 original/gog/Siege.exe` still reports
+    `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  Regeneration and headless verification:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f16-regenerate.log 2>&1`: **exit 0**. Translation took
+    **517.26 seconds** and emitted **29,684 bodies / 42,649 entries**, with
+    **0 failures, 0 table gaps, and 0 undecoded table sites**. It withdrew
+    1,382 speculative bodies and recovered 367 required entries through the
+    post-pruning span fallback. Native compilation linked `pop_headless`;
+    the linker retained its existing common-section alignment warning.
+    The generated wrappers confirm that `00b9c2e9` belongs to `00b9a2c8`,
+    and `00be4ce9` / `00be4fc8` belong to `00be4b00`. The method
+    `00a09a30` from finding 15 is now emitted too. `00919fa0` remains absent:
+    its speculative caller was withdrawn, so no surviving protected dispatch
+    requires it under this rule.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-17.log 2>&1`: **exit 6**.
+    `RECOMP_MAX_FRAMES` is the host's actual switch, counting presented
+    frames; import logging is `RECOMP_LOG=2`. The run stops at finding 17
+    below, with **0 frame files**.
+  - `grep -c 'PeekMessageW\|MsgWaitForMultipleObjectsEx'
+    build/task13-run-17.log`: output **0**, exit **1**. The 600-frame
+    message-loop acceptance remains unmet.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f16-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`. This existing wrapper invokes the kit's configure/build
+    and test helpers; the root native CLI still lacks `-R`.
+
+  17. **Blocked: UTF-16 scan rejection matches a zero-local prologue; no fix
+      commit.** The new runtime line is `call to unknown target 00bca4c8
+      (ESP=0efffb64, return=00bcebb1): returning 0`. The pinned PE contains
+      a real method there: `PUSH EBP; MOV EBP,ESP`, seven `PUSH 0`
+      instructions, saved registers and an SEH frame. Its first 16 bytes are
+      `55 8b ec 6a 00 6a 00 6a 00 6a 00 6a 00 6a 00 6a`.
+      Finding 15's filter sees consecutive printable `6a 00` UTF-16 pairs
+      and rejects the speculative candidate. This is not an alignment or
+      instruction-support failure: alignment is 4, the target passes the
+      plausible-entry check, and a bounded sweep recovers 132 instructions
+      that translate successfully. A relocated VMT slot at `00bc768c`
+      points to the method, as does metadata at `00bc77b5`; pointer evidence
+      remains speculative under the approved ordering. The actual caller is
+      `00bcebae CALL dword ptr [EDI+0xc]`, not a direct static CALL.
+
+      A bounded synthetic case with the same zero-local prologue and a
+      relocated pointer reproduces the omission:
+      `.venv/bin/python -m pytest -q build/task13_f17_push_zero_entry_test.py
+      > build/task13-f17-red.log 2>&1`: **1 failed**, exit **1**, because
+      `fn_00601020` is absent. The reproducer and pinned-PE evidence
+      (`build/task13-f17-pe-evidence.txt`) remain ignored. No filter
+      exception or stronger relocation rank was invented: admitting this
+      method requires an orchestrator decision distinguishing these valid
+      instruction bytes from the literal UTF-16 rejection rule.
+
+      The subsequent line is `SEH: registration outside guest stack
+      (registration=0000000d target=00000000 FS=0fe00000 ESP=0efffb28)`.
+      The method's real epilogue is `RET 4` at `00bca6a0`; the unknown-call
+      fallback uses a plain RET. The caller pushes its argument at
+      `00bceb94`, invokes the virtual method, then restores its SEH chain
+      with `POP EDX; POP ECX; POP ECX; MOV FS:[EAX],EDX`. Omitting the
+      callee's four-byte cleanup leaves the argument in that first POP's
+      slot, explaining the invalid registration value. The chain walker
+      aborts before an unhandled exception-object report is reached. This
+      downstream SEH failure should be re-evaluated after method admission.
+
+  Error 126 re-evaluation: this run has **no GetLastError, FormatMessageW,
+  or no-live-checkpoint diagnostic**, and stops before the earlier
+  `uxtheme.dll` lookup. Its last missing-module line is
+  `LoadLibrary("d3dxof.dll"): no shims for that module, reporting it as
+  missing` at line 589, followed by hundreds of successful import calls
+  before the new missing-method line at 1078. `msctf.dll` is also reported
+  missing. This does not establish a need for either module's shim, nor
+  establish that the previous error-126 path is fixed. The documented
+  optional lookup misses remain unchanged.
+
+  **Acceptance remains unmet.** Finding 16 is fixed and the headless build
+  succeeds, but Task 13 stops at finding 17's admission-policy boundary.
