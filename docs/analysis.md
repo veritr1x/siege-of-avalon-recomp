@@ -492,3 +492,86 @@ UTF-16 records rather than C strings.
   - Kit formatting, game-literal checking, staged source-boundary checking
     and whitespace checks passed before each kit commit. All commits are
     local; no sibling checkout, player saves or other platforms were changed.
+
+  **2026-09-14 continuation, after the orchestrator's computed-return decision:**
+
+  3. Finding 3 is now fixed by kit **61d5b95**, `Translator: return computed
+     jumps to non-entry call continuations`. The translator records every
+     translated CALL's next instruction in a sorted array and emits the
+     binary-search predicate `recomp_is_call_return`. After preserving the
+     existing entry dispatch, a computed jump to a non-entry CALL continuation
+     sets EIP and returns to the pending host caller without popping or
+     dispatching again. The private reproducer was promoted to the instruction
+     suite; its harness recognizes the external `MAGIC_RET` sentinel without
+     another pop. A driver regression checks direct, register and memory CALL
+     continuations, their order, and the dispatch-before-return rule. Both
+     regressions failed before implementation and pass after it. Regeneration
+     exits **0**, translates in **88.4 s**, emits **38,197 entries** and links
+     `pop_headless` (`build/task13-f3-regenerate.log`).
+
+  4. The next run exits **5** with `[host] SIGSEGV in guest thread 1:
+     EIP=0080ea1d ESP=0effcefc EBP=0effcf28`. LLDB locates the actual bad read
+     at guest `0080ea3d` in `body_0080e9e0`: a UTF-16 read at `10000000`,
+     outside guest memory. Tracing an earlier locale cleanup confirms another
+     translator control-flow gap. `functions/0080df4c.asm` ends with
+     `PUSH 0x80e0b8; LEA EAX,[EBP-0x168]; MOV EDX,3; CALL 0x0080ad20; RET`.
+     The pushed continuation restores EDI, ESI, EBX, ESP and EBP before its
+     own RET, but the generated first RET returns to the host caller early.
+     LLDB stopped immediately before guest `0080e0b0`: ESP=`0effd6f8`,
+     EBP=`0effd870`, `[ESP]=0080e0b8`, `[EBP+4]=0080e2ed`. Stepping out
+     resumed the caller at `0080e2ed` with EIP=`0080e0b8`, ESP=`0effd6fc`
+     and unchanged EBP; the correct epilogue would leave ESP=`0effd878`.
+     Evidence: `build/task13-lldb-04.log` and `build/task13-finally-lldb.log`.
+     There is **no fix commit** for finding 4. It needs a rule for RET through
+     a pushed continuation across cleanup instructions/calls, including the
+     shared cleanup's alternate entry. The adjacent PUSH/RET rule from finding
+     1 and the computed-JMP rule from finding 3 do not cover it. Globally
+     dispatching RET targets that are entries could repeat a real caller's
+     continuation. Work stops at this further design boundary as instructed.
+
+  The private regression `build/task13_finally_return_test.py` reproduces the
+  missing epilogue against Unicorn: **1 failed**, `ESP: native 0efffefc unicorn
+  0effff04` and `EBP: native 0efffefc unicorn af1ffe0d`. Its first setup hit the
+  harness's explicit prohibition on CALLs; eliding the balanced helper call
+  retains the nonadjacent PUSH/RET failure using LEA and MOV. It remains an
+  ignored diagnostic artifact, not a committed failing test.
+
+  Latest run command (unchanged switch set):
+
+  ```sh
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 \
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames \
+    build/recomp/pop_headless > build/task13-run-04.log 2>&1
+  ```
+
+  This run passes the old unknown computed-jump failure, then reaches
+  `GetSystemDefaultUILanguage`, `FindFirstFileW` and `LoadStringW`. It records
+  **0** `PeekMessageW`/`MsgWaitForMultipleObjectsEx` calls, **0** unknown-target
+  or missing-shim diagnostics, **0** `RaiseException` calls and no frame files.
+  No unhandled Delphi exception object is available to print. Task 13's
+  **600-frame, exit-0 acceptance remains unmet**.
+
+  Additional validation on kit 61d5b95, from the game repository root:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    -k popped`: **1 failed, 28 deselected** before the fix.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k computed_returns`: **1 failed, 21 deselected** before the fix.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_seh.py`: **58 passed**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py`:
+    **103 passed, 1 skipped**, with the same corpus exclusions as above.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose`:
+    **844 checks, 0 failures, 1 skipped**, exit **0** (CTest label `game`).
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose`:
+    **113 checks, 0 failures**, exit **0** (CTest label `nogame`).
+  - `.venv/bin/python -m pytest -q tests`: **4 passed**;
+    `.venv/bin/python -m pytest -q kit/tests/test_game_literals.py`:
+    **3 passed**.
+  - Formatting, game-literal, staged source-boundary and whitespace checks
+    passed before the kit commit. Run logs and debugger artifacts remain
+    ignored under `build/`; no generated code was edited and nothing was pushed.
