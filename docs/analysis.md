@@ -1299,3 +1299,121 @@ UTF-16 records rather than C strings.
   without assigning an unproven common cause. The optional
   InitializeConditionVariable lookup and the previously approved zero
   misses remain unchanged. Nothing is pushed.
+
+- **2026-09-14 — Task 13 continuation: exact x87 integer copies (finding 10).**
+  The approved integer side channel is implemented in kit **4a47e88**
+  (`x87: preserve exact integers through FILD and FIST stores`). This
+  extends the preceding findings; their earlier run results remain above.
+
+  10. The reproduced `native copied text 'Put pf mdlory'` corruption is
+      fixed by retaining signed 64-bit FILD payloads alongside each x87
+      double. FIST/FISTP stores use the exact integer when representable;
+      narrower overflow keeps the existing integer-indefinite behavior.
+      FLD ST, FXCH and FST/FSTP ST preserve the payload and validity flag;
+      arithmetic, ordinary loads and restored floating values invalidate
+      it. Both Python X86 mirrors were updated. Whole-context copies in
+      SEH and heap-thunk dispatch already carry the new fields, and
+      `stub_recomp_call.cpp` has no field-by-field context copy to change.
+      The existing mod ABI exposes doubles: unchanged hook values retain
+      the internal exact payload, while changed values clear it. Replay
+      creates a zero-initialized X86 from that double-only ABI, so it has
+      no stale exact flags. Extending the external capture ABI is outside
+      this integer-copy fix. The listed Move routine at `0x00807088`
+      uses qword integer copies; no FLD/FSTP tbyte copy was found there,
+      and 80-bit memory conversion behavior was not expanded.
+
+  Validation before regeneration:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    -k FILD > build/task13-f10-red.log 2>&1`: **10 failed, 9 passed,
+    33 deselected**, exit **1**, before implementation. This includes
+    the promoted single-copy and 26-byte resource-copy reproducers.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f10-green.log 2>&1`: **52 passed**, exit **0**.
+    The new cases cover the requested fixed and random qwords, register
+    moves, sign extension, narrowing and stale metadata after arithmetic
+    or stack-slot reuse, all compared with Unicorn.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f10-portable.log 2>&1`: **170 passed, 1 skipped**,
+    exit **0**, retaining the earlier corpus exclusions.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f10-native.log 2>&1`: **851 checks, 0 failures,
+    1 skipped**, exit **0**, label `game`.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f10-seh.log 2>&1`: **113 checks, 0 failures**,
+    exit **0**, label `nogame`.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f10-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write`, staged
+    `kit/tools/check_repo.py`, `kit/tools/check_game_literals.py`, and
+    whitespace checks passed before the kit commit. The executable hash
+    was rechecked and still matches the pinned SHA-256.
+
+  Regeneration and the post-fix run:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f10-regenerate.log 2>&1`: **exit 0**. Translation took
+    **330.6 s**, with **33,098/35,540 functions**, **44,613 entry points**,
+    167 chunks and the same recovery counts as the preceding run. The
+    existing linker section-alignment warning remains.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-10.log 2>&1`: **exit 6**.
+    The promoted oracle now copies `Out of memory` exactly, but the
+    headless run still rejects the oversized allocation. No claim is made
+    that the exception object's message was re-read successfully in this
+    run: the debugger probes described below never reached guest code.
+
+  11. **Re-evaluated after exact copies: still unresolved.** The new log
+      repeats `heap_alloc: refusing a 547618816 byte request, the arena is
+      218103808 bytes`, followed by RaiseException at guest return
+      `0x0080ac27` and RtlUnwind. Thus fixing FILD/FISTP precision did not
+      remove the oversized-allocation symptom. The earlier live diagnosis
+      of code address `0x0088c840` as a string pointer remains the starting
+      point, rather than a newly verified register capture. A prepared
+      probe compares ESP around the indirect call at `0x0088c83d`, then
+      stops at the allocation and decodes the exception object; it could
+      not complete because of the debugger launch blocker below.
+
+  12. **Re-evaluated after exact copies: still unresolved.** The new log
+      repeats `call to unknown target 008de6f8 (ESP=0efffe58,
+      return=0080a690): returning 0`, then `no block entry for indirect
+      jump to 0x0080a71a from 0x0080a4ad`. The abort reports
+      **EIP=0080a4ad, ESP=0080ac33, EBP=89000000**. The target is still
+      inside the CALL displacement documented above. No invalid landing
+      seed or new control-flow rule was introduced.
+
+  Diagnostic limitation in this continuation:
+
+  - `lldb --batch -s build/task13-f10-recheck.lldb -- build/recomp/pop_headless
+    > build/task13-f10-recheck.log 2>&1` stalled at `process launch`,
+    before any guest output. The source breakpoint resolved successfully.
+  - Retrying that command with a PTY (output in
+    `build/task13-f10-recheck-pty.log`), then with
+    `process launch --disable-aslr false --no-stdio` in
+    `build/task13-f10-recheck-nostdio.lldb` (output in
+    `build/task13-f10-recheck-nostdio.log`), stalled at the same point.
+    A temporary copy of the native executable under `/tmp`, using the
+    latter script, also stalled (`build/task13-f10-recheck-copy.log`).
+  - One-second `sample` captures of the owned debugger, debugserver and
+    inferior show LLDB waiting for a process stop, debugserver waiting
+    for process events, and the inferior blocked in
+    `dyld4::Loader::getOnDiskBinarySliceOffset -> mapFileReadOnly -> __open`
+    before `main`. These are diagnostic observations, not a proven cause
+    of the debugger stall. All four attempts were explicitly terminated;
+    none is reported as a passing run. Their scripts, logs and samples
+    remain ignored under `build/`; the temporary executable copy was
+    removed, and no owned debugger or headless process remains.
+
+  **Acceptance remains unmet:** **0** `PeekMessageW|MsgWaitForMultipleObjectsEx`
+  lines, **0** frame files, exit **6**, using the actual `RECOMP_MAX_FRAMES`
+  cap and `RECOMP_LOG=2` import tracing. GetLogicalProcessorInformation and
+  RtlCompareUnicodeString remain the approved zero misses;
+  InitializeConditionVariable also remains an observed miss without a
+  proven causal link to this abort. No synchronous-thread override, hash
+  bypass, new shim assumption or unrelated host/debugger repair was made.
+  Work stops with the tested x87 fix preserved and findings 11/12 awaiting
+  a working live probe or another approved diagnostic route.
