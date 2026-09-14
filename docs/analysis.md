@@ -339,3 +339,48 @@ UTF-16 records rather than C strings.
   kit repository or pushing. Native validation was on macOS only. No game
   boot, menu, gameplay, video playback or iOS/Linux/Windows execution was
   attempted; linking and these suites do not establish that the game runs.
+- **2026-09-14, Phase B: what a Delphi program needs, in the kit.** Kit
+  `siege-delphi` f93fdc6 (28 commits on top of the merge with `main`
+  86bf512) closes every runtime gap the survey listed, each unit-tested
+  without the game. The loader processes the TLS directory (a reserved
+  slot, the index written at `0xbffc28`, a block per thread; 7404c02).
+  `LoadLibrary` answers from the shim registry, so a game that loads
+  `ddraw.dll` at run time gets the kit's DirectDraw; `gm_wstr`/`gm_put_wstr`
+  and the `W` module API (09cc5d4). The wide kernel32 surface in seven
+  groups (files through the ANSI file seam, profile strings, named kernel
+  objects, text and time, locale probes, process and version probes, a
+  bounded PE resource reader; 045a9ba..df3606c). oleaut32, the wide
+  registry and version APIs, comctl32 image lists with DIB drawing,
+  winspool/netapi32/msvcrt/shfolder/shell32 (db5b87b..f048e58). The wide
+  user32 API and a VCL window model: hierarchy, timers on the pinned clock,
+  input state, monitors, menus, shared scroll bars, clipboard, drawing
+  services (607e295..a55568e). GDI: window canvases and device contexts,
+  DIB blits, shapes and regions, scaled bitmap-font text sharing
+  `mods/font6x8.cpp`, wide font enumeration, presented through the display
+  seam (483a29b..0978150). FMOD 3 over the mixer and the shared MP3 source,
+  the `Soundlib.dll` MIDI helper (arities read off the DLL: `CreateMidi`,
+  `StopMidi`, `FreeMidi` take nothing; `OpenMidi`, `SetMidiVolume` one
+  argument) and an offline Galaxy (9345855). The `runtime_tests` check
+  "imports have an unknown argument count" went 411 → 407 → 345 → 337 →
+  251 → 105 → 25 → 0 across these tasks: every one of the 543 imports now
+  has a signature.
+
+  Structured exception handling (40d88de, fcc191c, spec
+  `kit/docs/superpowers/specs/2026-09-14-seh-design.md`): the first design
+  was measured wrong on three counts (the 2,258 handler stubs are outside
+  every listing; 158 typed stubs are followed by a type/handler table, not
+  code; Delphi's accepting routine keeps the dispatcher's stack, so ESP does
+  not identify the registration) and revised: landing blocks are seeded as
+  entry points with provenance `seh` and reached through the existing
+  alternate-entry machinery, the checkpoint at each `MOV FS:[EAX],ESP` is
+  the two-call host `setjmp` form `_setjmp` already uses, `RtlUnwind`
+  records its target registration and the next computed jump lands on that
+  registration's checkpoint, and `frame_leave` pops the records below the
+  live stack (a fourth measurement caught the first predicate keeping the
+  wrong frame after nested pops). Regeneration: **38,196 entries**
+  (+5,602; 8,181 with `seh` provenance), `fn_008812e8` present,
+  translation 89 s, compile 20 s, `pop_headless` links. Suites:
+  `seh_tests` 113 checks, `runtime_tests`, `host_tests`, `dx_tests`,
+  87 translator tests, 37 kit tests, all green; the kit's legacy hook suite
+  wants another game's corpus and is excluded from the portable run.
+  Nothing has been run against the game yet: that is Phase C.

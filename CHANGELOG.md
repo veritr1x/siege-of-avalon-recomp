@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
+  and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas
+  with DIB blits and bitmap-font text, FMOD 3 and the MIDI helper as shim
+  modules, an offline Galaxy, and structured exception handling for Delphi
+  frames (design in the kit's `2026-09-14-seh-design.md`). Every import of
+  `Siege.exe` has a shim signature; the translation grows to 38,196 entries
+  with the exception landing blocks. Nothing runs yet.
 - Kit pinned to `siege-delphi` b2f0146, which now carries kit `main` 86bf512:
   FFmpeg video, desktop and Android packaging, mss32 and user32/GDI shims,
   optional entry-point seeds and heap placement, table-gap override
