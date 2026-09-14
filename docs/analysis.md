@@ -276,3 +276,66 @@ UTF-16 records rather than C strings.
   both kit commits. Logs are under `build/task4-*.log`. No native runtime
   suite or game execution was attempted; compilation and linking do not
   establish startup, menu rendering or gameplay.
+
+- **2026-09-14, kit main merged into siege-delphi (Task K2).** Kit merge
+  `b2f0146` has parents `df3606c` (Tasks 1-7 and the game-independent native
+  suites) and upstream `86bf512`. It carries upstream FFmpeg video, desktop
+  and Android packaging, mss32, user32/GDI shims, configured translation
+  entry seeds, table-gap override passthrough and per-game heap placement.
+  Android support is inherited from upstream; no Android work or validation
+  was performed for this port.
+
+  The sole content conflict was `runtime/CMakeLists.txt`. The resolution
+  retains the wide kernel32/resource sources and both sides' target guards;
+  the profile suite uses the first generated FIDX entry and is omitted if
+  none exists. Semantic review retained the game-derived runtime and host
+  expectations alongside upstream's new checks, `imports_has_dll` alongside
+  `imports_argc`, TLS initialization alongside the heap-base changes, and
+  computed-jump discrimination alongside configured entry seeds. No duplicate
+  kernel32 shim names remain. A regression first exposed different virtual
+  disk capacities from `GetDiskFreeSpaceA` and `W`; both now use one helper
+  reporting upstream's 4 GB free of 8 GB. The new assertion failed before
+  that resolution and passed afterwards.
+
+  Neither `heap_base` nor `entry_points` is newly required: the defaults are
+  `0x01000000` and an empty seed list. `game.toml` and its tests are unchanged,
+  and the executable's pinned SHA-256 was verified. Regeneration through
+  `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8`
+  exited **0** and linked `build/recomp/pop_headless`. Translation took
+  **44.56 s** and retained **32,594 entry points** (delta **0**), **827**
+  withdrawn speculative blocks, and empty `failures`, `table_gaps` and
+  `table_sites_undecoded` lists. Compared with the prior report, only elapsed
+  time and the new `config: 0` provenance field changed. The existing linker
+  warning about reducing `__DATA,__common` alignment remains.
+
+  Validation, in the requested order (logs and exit-code files under
+  `build/k2-*`):
+
+  - The exact `.venv/bin/python -m pytest -q kit/tools/recomp/tests`
+    command exited **3** during collection: legacy `test_translate.py`
+    requires `RECOMP_GAME_DIR` and is a standalone game-backed harness.
+    The portable selection, using `--ignore` for that file, its
+    `test_eaxa.py` consumer and `test_translate_hooks.py` (which reads
+    another game's hard-coded generated artifacts), exited **0**:
+    **80 passed, 1 skipped**. This is not an all-directory pytest pass.
+  - `.venv/bin/python -m pytest -q kit/tests`: exit **0**, **37 passed,
+    2 skipped**.
+  - `.venv/bin/python tools/test.py`: exit **0**, **145 passed, 3 skipped**.
+  - `.venv/bin/python -m pytest -q tests`: exit **0**, **4 passed**.
+  - The regeneration/link command above: exit **0**.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose`:
+    exit **1** (CTest **8**), **672 checks, 1 failure, 1 skipped**. The sole
+    failure is **337 imports with unknown argument counts**, down from
+    Task 7's **345**. The skipped fixture is the image with no data imports.
+  - The same recorded runner with `profile_tests --verbose`: exit **0**,
+    both disabled and enabled modes pass; with `host_tests --verbose`:
+    exit **0**, **3,921,103 checks, 0 failures**. This is the Task K1
+    adaptation of the Task 5 runner, using the kit's test/build helpers;
+    the ordinary test CLI still has no `-R` option.
+
+  Formatting (**247** handwritten sources), the game-literal checker and
+  staged-source boundary checker passed. The merge and game pointer are
+  committed locally; the checkout override prohibits updating the sibling
+  kit repository or pushing. Native validation was on macOS only. No game
+  boot, menu, gameplay, video playback or iOS/Linux/Windows execution was
+  attempted; linking and these suites do not establish that the game runs.

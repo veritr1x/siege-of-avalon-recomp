@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Kit pinned to `siege-delphi` b2f0146, which now carries kit `main` 86bf512:
+  FFmpeg video, desktop and Android packaging, mss32 and user32/GDI shims,
+  optional entry-point seeds and heap placement, table-gap override
+  passthrough, guarded game-independent profile tests and consistent A/W
+  disk-space queries. Regeneration still links 32,594 entries; the runtime
+  suite's sole failure is the 337 imports with unknown argument counts.
+
 - Kit pinned to `siege-delphi` 6a19ac7: the loader processes the TLS
   directory, `LoadLibrary` serves every registered shim table (so a game that
   loads DirectDraw at run time finds it), wide-string helpers and the `W`
