@@ -2182,3 +2182,112 @@ UTF-16 records rather than C strings.
 
   **Acceptance remains unmet.** Finding 16 is fixed and the headless build
   succeeds, but Task 13 stops at finding 17's admission-policy boundary.
+
+- **2026-09-14 — Task 13 continued: narrow the UTF-16 guard (finding 17).**
+  The orchestrator supplied two corrections to finding 15's guard. Kit
+  `d5778d1` (`Translator: narrow UTF-16 rejection for compiler prologues and
+  relocations`) exempts relocation-named candidates from that guard and
+  excludes byte `0x6a` from its printable-ASCII set. Other admission,
+  ownership and pruning rules remain as previously approved.
+
+  17. **Repeated PUSH 0 prologue rejected as UTF-16 — fix `d5778d1`.** The
+      motivating runtime line was `call to unknown target 00bca4c8
+      (ESP=0efffb64, return=00bcebb1): returning 0`. Its seven `6a 00`
+      instructions had matched the old guard. The private reproducer is now
+      a driver regression, covering the prologue both with and without
+      relocation evidence. A separate case confirms that relocation evidence
+      bypasses the guard even for other printable byte pairs. The existing
+      speculative `ABCD` and `MDICLIENT` rejection cases still pass.
+      Direct PE checks confirm that both `00bca4c8` and `00919fa0` now fail
+      the text-pattern test; the latter has no relocation reference.
+
+  Verification:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k 'zero_local_pushes or utf16_run_filter or wide_string_prefix or protected_call_target'
+    > build/task13-f17-promoted-red.log 2>&1`: **3 failed, 7 passed**,
+    exit **1**, before implementation. The failures cover both zero-local
+    variants and the relocation exemption.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f17-green.log 2>&1`: **137 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f17-portable.log 2>&1`: **193 passed, 1 skipped**,
+    exit **0**, retaining the private-corpus exclusions used earlier.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f17-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f17-format.log 2>&1`: **268 handwritten source files
+    formatted**, exit **0**. The repository-boundary, game-literal and
+    staged whitespace checks passed before the kit commit.
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f17-regenerate.log 2>&1`: exit **0**. Translation took
+    **542.6 seconds** and emitted **29,811 functions / 42,854 entries**,
+    including **13,043 alternate entries**. The jump-table gate reports
+    **0 entries dispatch nowhere / 0 sites decoded nothing**. The final
+    link succeeded with the existing `__DATA,__common` alignment warning.
+    Generated wrappers now include both `fn_00bca4c8` and `fn_00919fa0`.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-18.log 2>&1`: exit **6**,
+    **0 frame files**, and **0 matches** for
+    `PeekMessageW|MsgWaitForMultipleObjectsEx`. The log confirms caps of
+    **600 frames / 180 seconds**. Finding 17's unknown method and invalid
+    registration `0000000d` no longer appear; startup advances to the
+    previously observed form-creation path.
+
+  18. **Blocked: a relocated UTF-16 literal hides a relocated virtual
+      method; no fix commit.** The run stops at line 1959:
+      `call to unknown target 00a09a30 (ESP=0efffbc4,
+      return=00961bcc): returning 0`. The new relocation exemption also
+      admits the real `MDICLIENT` literal at `00a09a1c`: relocation slot
+      `00a098e4`, in a `MOV EDX,imm32`, names that string address. The
+      method at `00a09a30` is independently named by relocated vtable
+      slots, including `0098a020`. A base relocation therefore identifies
+      an address in both cases, without distinguishing code from text.
+
+      Generated `body_00a09a1c` contains the speculative string decode and
+      runs through `00a09b65`; its instruction at `00a09a2f` consumes
+      bytes `00 55 8b`, including the real method's `PUSH EBP; MOV EBP,ESP`
+      prologue. Thus `00a09a30` is rejected as an instruction-interior
+      address, and no wrapper is emitted for it. The actual caller is
+      virtual (`CALL [ECX+0xe4]` at `00961bc6`), so the approved stronger
+      direct-CALL evidence rule does not rescue this entry. Both competing
+      candidates retain speculative provenance under the current rules.
+
+      A synthetic fixture with relocations to both the string and the
+      following method reproduces the conflict:
+      `.venv/bin/python -m pytest -q build/task13_f18_relocated_string_prefix_test.py
+      > build/task13-f18-red.log 2>&1`: **1 failed**, exit **1**, because
+      the method wrapper is absent. The same fixture against the preceding
+      translator (`235b9a6`), loaded by
+      `.venv/bin/python build/task13-f18-baseline.py
+      > build/task13-f18-baseline.log 2>&1`, gives **1 passed**, exit **0**.
+      Finding 15's existing MDICLIENT regression names only the method with
+      a relocation, which explains why it still passes. These private
+      reproducer files and the pinned-PE decode in
+      `build/task13-f18-pe-evidence.txt` remain ignored. The executable's
+      SHA-256 is unchanged. No new admission ordering or exception to the
+      approved relocation exemption was invented.
+
+  The last missing-module line before this stop is
+  `LoadLibrary("uxtheme.dll"): no shims for that module, reporting it as
+  missing` at line 1241; `d3dxof.dll` appears at line 589. Neither module
+  was stubbed. The missing method is followed by `GetLastError`,
+  `FormatMessageW`, `RaiseException`, then
+  `SEH: unwind target has no live checkpoint (registration=0effff84
+  target=00809542 FS=0fe00000 ESP=0efffb20)` at line 1980. This repeats the
+  earlier error-126 path, whose exception was previously inspected as
+  `EOSError`; the current log does not print the error value or exception
+  object because it aborts during unwind before the unhandled-exception
+  reporter. The remaining unknown method prevents attributing this path
+  to an absent module or treating the unwind checkpoint as an independent
+  defect. Optional lookup misses are unchanged.
+
+  **Acceptance remains unmet.** Finding 17 is fixed as directed. Task 13
+  stops at finding 18: the recovery rules need to resolve overlapping
+  relocation-backed code and data candidates without reinstating the
+  zero-local prologue rejection.
