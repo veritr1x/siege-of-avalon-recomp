@@ -2,15 +2,17 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` 1686c72 preserves pushed RET continuations, keeps
+- Kit `siege-delphi` c6adb32 preserves pushed RET continuations, keeps
   speculative SEH bodies prunable, dispatches computed jumps within unrolled
   routines, supports per-game alignment and zero-register SEH frames, and
   interprets bounded compiler-generated guest thunks. Exact x87 integer
   copies now preserve resource strings and 64-bit records. Recovered CALLs
   push their decoded continuation, and oversized heap requests report guest
-  registers and return candidates. Headless startup remains blocked before
-  the VCL message loop (Task 13): a vtable adapter uses a register-pushed
-  RET target that the translator does not yet dispatch.
+  registers and return candidates. RET now dispatches vtable-loaded methods,
+  removing the oversized allocation and advancing startup into form loading.
+  Headless startup remains blocked before the VCL message loop (Task 13):
+  an except-owned join splits an outer finally cleanup from its establishing
+  function and skips its epilogue.
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas

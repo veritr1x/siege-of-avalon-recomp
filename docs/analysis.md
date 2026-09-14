@@ -1582,3 +1582,166 @@ UTF-16 records rather than C strings.
   bypass, unrelated shim, or debugger repair was introduced. The tested
   commits are retained; the next required decision is how to recognize and
   dispatch the register-pushed vtable-adapter RET exactly once.
+
+- **2026-09-14 — Task 13 continuation: RET classifies vtable-method targets.**
+  Continued from kit `1686c72` and game commit `779d0e9`, following the
+  orchestrator's finding-13 decision. Earlier findings are retained above.
+
+  13. **Fixed — kit `c6adb32` (`Translator: dispatch RET targets that name
+      methods`).** Every emitted RET still pops its target and applies its
+      immediate stack adjustment once. The shared `recomp_return` helper
+      first checks the generated call-return table; a match returns to the
+      pending host caller even if it is also an alternate entry. Otherwise,
+      a translated entry is dispatched through `recomp_call` as a tail call,
+      so its RET consumes the original caller's return address. Unknown
+      return targets retain the previous EIP/host-return behavior. Functions
+      with pushed interior continuations still check their local switch
+      before invoking this classification in its default arm. Plain functions
+      keep compact one-line RET emission, without an interior switch; their
+      classification lives in the common helper.
+
+      The private adapter reproducer was promoted into the instruction suite
+      with a small method in the case's own code range. The harness now exposes
+      explicit alternate entries and the two table predicates, while using the
+      runtime helper itself for RET classification. Before implementation,
+      native execution skipped the method and left ESP four bytes below the
+      Unicorn result. The method and caller now execute exactly once, and all
+      compared registers, flags and memory agree. The driver regression checks
+      compact plain RET emission and classification ordering; existing local
+      continuation-switch regressions remain covered. The native SEH landing
+      fixture also uses the new helper with a call-return sentinel that is
+      deliberately an entry, exercising the precedence rule during unwinding.
+
+  Checks for this fix:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    > build/task13-f13-promoted-red.log 2>&1`: **3 failed, 114 passed**, exit
+    **1**, before implementation (adapter behavior, switch default and plain
+    RET classification assertions).
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py
+    kit/tools/recomp/tests/test_translate_driver.py
+    > build/task13-f13-green.log 2>&1`: **117 passed**, exit **0**.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f13-portable.log 2>&1`: **173 passed, 1 skipped**, exit
+    **0**, retaining the previous corpus exclusions. The isolated dispatcher
+    probe in `test_translate.py` gained the new predicate stubs so it can link
+    generated RET code; its corpus suite was not run.
+  - `.venv/bin/python build/task-k1-native.py seh_tests --verbose
+    > build/task13-f13-seh.log 2>&1`: **113 checks, 0 failures**, exit **0**,
+    label `nogame`.
+  - `.venv/bin/python build/task-k1-native.py runtime_tests --verbose
+    > build/task13-f13-native.log 2>&1`: **857 checks, 0 failures, 1 skipped**,
+    exit **0**, label `game`. The existing ignored wrapper drives kit
+    `tools/test.py`; the root CLI still lacks the plan's `-R` option.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f13-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write`, staged
+    `kit/tools/check_repo.py`, `kit/tools/check_game_literals.py` and
+    whitespace checks passed before the kit commit.
+
+  Run and next finding:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f13-regenerate.log 2>&1`: **exit 0**, translation **327.6 s**,
+    **44,613 entries** and **167 chunks**. The existing linker section-alignment
+    warning remains. The generated header includes the committed RET helper.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-13.log 2>&1`: **exit 6**.
+    The oversized allocation from finding 11 and the code-address ESP from
+    finding 13 disappear. Startup progresses through launch-settings form
+    loading; this is not evidence of the message loop running.
+
+  14. **Blocked — normal flow joins an except-owned suffix before an outer
+      finally cleanup; no fix commit.** The final visible error is
+      `call to unknown target 00000001 (ESP=0efffe90, return=00808e63):
+      returning 0`, followed by `SEH: registration outside guest stack
+      (registration=00000000 target=010a8720 FS=0fe00000 ESP=0efffe80)`.
+      A temporary call trace identifies the earlier divergence inside the
+      reader at `00879224`, before the invalid virtual call or unwind:
+
+      - The pinned PE decodes `00879507 JMP 00879530`, skipping the
+        `00879509` handler stub and its except block at `0087950e`.
+        The join at `00879530` pops the next registration, restores FS:[0],
+        and executes `00879538 PUSH 0087954f`.
+      - Normal flow then falls into cleanup `0087953d`, which calls a virtual
+        method and RETs at `00879547`. Its exception entry is
+        `00879548 JMP HandleFinally; 0087954d JMP 0087953d`. The normal
+        continuation `0087954f` unlinks another frame and pushes `00879571`
+        before another cleanup at `0087955c`; `00879571` is the actual
+        epilogue, restoring ESP from EBP, popping EBP and returning.
+      - Generated `body_00879224` instead ends at `00879507` with
+        `CALL_FN(00879530); return;`. That entry belongs to
+        `body_0087950e`, which stops after pushing `0087954f` and tail-calls
+        cleanup `0087953d`. The cleanup belongs to `body_0087954d` and uses
+        plain RET classification; its pushed continuation is outside its
+        body. `0087954f` is absent from the generated entry table. Thus the
+        RET returns through the pending C frames without executing either
+        outer continuation or the original epilogue.
+      - The trace confirms `00879224` enters with ESP=`0efffec8` and exits
+        with ESP=`0efffe70`, EBP=`0efffec4`, EIP=`0087954f`. Its proper return
+        position is `0efffecc`: **92 bytes higher**. Its caller `00873888`
+        then runs cleanup using the reader's stale EBP and ultimately pops
+        a UTF-16 form-name pointer as EBP/EIP. The invalid destructor target
+        and SEH registration are downstream symptoms.
+
+      This differs from the directly adjacent cleanup edges covered by
+      finding 4: a normal branch first enters a join already owned by an
+      except landing, and the finally cleanup itself belongs to a third
+      body. The required decision is how to reunite these normal-flow
+      fragments with the establishing function while preserving the
+      exception-only entry and the two outer cleanup alternate entries.
+      No speculative ownership expansion or unrelated shim change was made.
+
+      `.venv/bin/python -m pytest -q build/task13_nested_cleanup_owner_test.py
+      > build/task13-f14-reproducer.log 2>&1`: **1 failed**, exit **1**.
+      This private synthetic driver fixture has an outer finally, an inner
+      except, a direct jump to their shared join, and a pushed cleanup
+      continuation. Translation succeeds, but the assertion that the
+      cleanup belongs to the establishing body fails. Its source and
+      generated evidence remain ignored under `build/` for the next decision.
+
+  Diagnostic and final verification details:
+
+  - Temporary runtime probes saved guest memory at the unknown call and
+    traced calls via the existing profile hooks. The effective trace command
+    was `RECOMP_PROFILE=1 RECOMP_CALL_TRACE_START=00879224
+    RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-f14-call-trace.log 2>&1`:
+    **exit 6**. The earlier snapshot run added
+    `RECOMP_UNKNOWN_DUMP=build/task13-unknown.bin` to the ordinary run
+    switches and wrote `build/task13-f14-probe.log`, also **exit 6**.
+    A shim register probe reported no nonvolatile-register changes.
+    An attempted inline RET probe was ineffective: the ordinary rebuild
+    retains the generated copy of `x86.h`. Absence of that probe's output
+    is not evidence about RET targets; the working profile trace above
+    establishes the divergence instead. No generated file was edited.
+  - All temporary probes were removed; `git -C kit diff --exit-code` passed.
+    `.venv/bin/python tools/build.py --target headless --jobs 8
+    > build/task13-f14-restored-build.log 2>&1`: **exit 0**.
+  - Final committed-source run:
+    `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-14.log 2>&1`: **exit 6**,
+    with the same unknown target and invalid registration. Abort context:
+    **EIP=00805174, ESP=0efffe80, EBP=01100c60**. There are **0**
+    `PeekMessageW|MsgWaitForMultipleObjectsEx` lines, **0** frame files,
+    **0** oversized heap refusals, and no remaining probe output.
+  - The approved optional GetLogicalProcessorInformation and
+    RtlCompareUnicodeString misses remain unchanged. InitializeConditionVariable,
+    DirectXFileCreate and missing msctf/d3dxof/uxtheme modules were observed;
+    the run proceeds past them, and none is established as the cause of this
+    stack divergence. The pinned executable SHA-256 was rechecked and matches
+    `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-final-config.log 2>&1`: **8 passed**, exit **0**.
+    The generated `x86.h` matches the committed runtime header byte for byte.
+
+  **Acceptance remains unmet.** The configured 600-presented-frame limit is
+  never reached; Task 13 stops at finding 14's ownership decision.
