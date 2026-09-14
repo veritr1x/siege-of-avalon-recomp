@@ -2447,3 +2447,372 @@ UTF-16 records rather than C strings.
   **Acceptance remains unmet.** Findings 18 and 19 are fixed and the new
   headless build succeeds. Task 13 stops at finding 20's equal-evidence
   admission boundary before reaching the VCL message loop.
+
+- **2026-09-15 — Task 13 continued: candidate boundaries and short constants
+  (finding 20).** Applied the orchestrator's boundary and terminator rules in
+  kit **e23246a** (`Translator: bound speculative bodies at candidate entries`).
+  Scan candidates are collected before any speculative sweep can hide another
+  candidate in its instruction bytes. Their relative evidence rank does not
+  permit a sweep to cross a candidate boundary. An earlier body survives only
+  if its prefix terminates; NOP fallthrough and partial instructions withdraw
+  it. Listed and established cleanup ownership retain their existing rules.
+
+  20. **Fixed: the equally ranked short-string guess no longer hides the
+      method stub.** The previous run stopped at line 408, `recomp: no block
+      entry for indirect jump to 0x0086e98c from 0x00809235`. The adjacent
+      UTF-16 `"."` guess at `0086e988` had swept across the relocated
+      `XOR EAX,EAX; RET` stub at `0086e98c`. The promoted regression now
+      requires the stub to be emitted. Independent equal-rank regressions
+      verify a terminating JMP prefix survives with a separate callee, while
+      an unterminated NOP prefix is withdrawn.
+
+      The secondary guard validates a complete constant UnicodeString header,
+      nonzero UTF-16 units, and the terminating zero word, including a
+      one-character constant. **Offset correction:** the pinned PE bytes at
+      `0086e97c` are `b0 04 02 00 ff ff ff ff 01 00 00 00`. Thus the word
+      at `p-12` is the code page (1200), and the element-size word (2) is at
+      **`p-10`**, not `p-12` as proposed. The guard and synthetic fixtures use
+      this verified layout. Invalid size, reference count, length, embedded
+      zero, terminator, and out-of-image length do not establish a constant.
+
+  Verification before regeneration:
+
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    -k 'short_string or equal_rank_candidates or utf16_constant'
+    > build/task13-f20-tests-red.log 2>&1`: **11 failed, 100 deselected**,
+    exit **1**, before implementation.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+    kit/tools/recomp/tests/test_translate_insns.py
+    > build/task13-f20-green.log 2>&1`: **164 passed**, exit **0**.
+    Earlier NOP-prefix expectations were updated to the newly required
+    withdrawal behavior. A speculative prefix falling into a separately
+    listed cleanup is likewise withdrawn; the listed cleanup survives.
+    The interior-handler ownership fixture now explicitly seeds its owner,
+    preserving its ownership test without relying on speculative fallthrough.
+  - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+    --ignore=kit/tools/recomp/tests/test_translate.py
+    --ignore=kit/tools/recomp/tests/test_eaxa.py
+    --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+    > build/task13-f20-portable.log 2>&1`: **220 passed, 1 skipped**, exit **0**.
+  - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+    > build/task13-f20-config.log 2>&1`: **8 passed**, exit **0**.
+  - `.venv/bin/python kit/tools/format.py --write
+    > build/task13-f20-format.log 2>&1`: **268 handwritten source files**,
+    exit **0**, before the kit commit. `kit/tools/check_repo.py`,
+    `kit/tools/check_game_literals.py`, and the whitespace check passed.
+
+  Regeneration with finding 20's first fix:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f20-regenerate.log 2>&1`: exit **0**; translation took
+    **283.6 seconds**, emitting **29,309 functions / 41,832 entries** with
+    **12,523 alternate entries**, **0 failures**, **0 table gaps**, and
+    **0 undecoded table sites**. `fn_0086e98c` is emitted and the string
+    `fn_0086e988` is absent. The earlier recovered methods `00a09a30`,
+    `00bca4c8`, and `00919fa0` remain emitted. Native linking succeeds with
+    the existing section-alignment warning.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-20.log 2>&1`: exit **6**,
+    **854 log lines**, **0 frame files**, **0 message-loop matches**. Startup
+    passes the old indirect-jump stop but exposes finding 21 below.
+
+  21. **Fixed candidate classification before applying boundaries**, kit
+      **4640283** (`Translator: preserve instruction and cleanup ownership
+      at scan boundaries`). The first implementation treated raw dword hits
+      and callable cleanup aliases as independent function starts too early.
+      Run 20 logs unknown calls to `00bfd16c` (line 84), `00bfdfb0` (308),
+      `00931248` (471), and `008fe9b8` (544).
+
+      `00bfe000` and `008fe9dc` are unrelocated scan hits inside instructions
+      of the relocated routines `00bfdfb0` and `008fe9b8`, respectively.
+      In the latter, the hit lies in the immediate of the `MOV EAX,0xc025dc`
+      at `008fe9da`; in the former it is the second byte of `XOR EDX,EDX`
+      at `00bfdfff`. Such weaker evidence must first pass instruction-boundary
+      admission. The fix establishes relocated instruction coverage before
+      allowing weaker raw hits to become candidate boundaries.
+
+      The other path crossed distinct cleanup stubs to blocks of the same
+      function. A single upper bound on the entire recursive descent hid
+      those blocks, although no linear instruction path crossed a candidate
+      entry. `00931248` was pruned for missing `0093130a`, whose three
+      instructions fall into its own PUSH-named epilogue `00931315`.
+      `00bfd16c` was pruned for missing `0082ebb0`, whose cleanup and
+      epilogue aliases had similarly become barriers. Boundaries now stop
+      each linear path, including partial opcodes, while direct branches
+      may skip separate stubs. Pushed continuations and SEH landings retain
+      their body ownership. An unrelated candidate in a gap between owned
+      blocks no longer truncates that body. None of these probes promotes
+      a speculative body to protected provenance; pruning remains active.
+
+      Regression commands:
+      - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+        -k 'bare_scan_hit_inside or speculative_body_keeps_branches'
+        > build/task13-f21-red.log 2>&1`: **2 failed, 111 deselected**, exit **1**.
+      - `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+        kit/tools/recomp/tests/test_translate_insns.py
+        > build/task13-f21-green.log 2>&1`: **166 passed**, exit **0**.
+      - `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+        --ignore=kit/tools/recomp/tests/test_translate.py
+        --ignore=kit/tools/recomp/tests/test_eaxa.py
+        --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+        > build/task13-f21-portable.log 2>&1`: **222 passed, 1 skipped**, exit **0**.
+      - `.venv/bin/python kit/tools/format.py --write
+        > build/task13-f21-format.log 2>&1`: **268 handwritten source files**,
+        exit **0**, before the kit commit. Repository, literal, and whitespace
+        checks passed.
+
+      Run 20 later refuses a **547,618,816-byte** allocation (line 579), then
+      reports `SEH: registration outside guest stack (registration=0080ac4b
+      target=00000000 FS=0fe00000 ESP=0080ac4b)` (line 850). These follow
+      the skipped methods and require re-evaluation after the admission fix.
+      Its only missing module is `msctf.dll`; it has no `uxtheme.dll` or
+      `d3dxof.dll` lookup. No missing-module stub was added.
+
+  Finding 21 regeneration and run:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f21-regenerate.log 2>&1`: exit **0**, **411.5 seconds**
+    of translation; **28,978 functions / 42,020 entries**, **13,042 alternate
+    entries**, **0 failures**, **0 table gaps**, **0 undecoded table sites**.
+    `00bfdfb0` and `008fe9b8` are restored; `00bfd16c` and `00931248` remain
+    absent, leading to finding 22.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-21.log 2>&1`: exit **6**,
+    **1,819 log lines**, **0 frame files**, **0 message-loop matches**.
+    The oversized allocation and code-address stack pointer from run 20
+    disappear. Startup reaches window registration, but still skips several
+    missing methods and then fails to unwind to a live checkpoint.
+
+  22. **Fixed pre-existing cleanup aliases blocking their establishing
+      body's admission**, kit **ad5bbdf** (`Translator: recover owned cleanup
+      before speculative admission`). Run 21 still logs missing `00bfd16c`
+      (line 84) and `00931248` (470); later missing entries are `00bfe8f8`
+      (613), `00bfe99c` (615), `00a0741c` (648), `00a0805c` (689),
+      `008fe90c` (891), and `00a09208` (1778).
+
+      Beyond the candidate-boundary set, the recovery routine's existing
+      instruction-owner stop set could end a prefix at an already recovered
+      cleanup. Applying the terminator rule at that point rejected the
+      establishing body before ordinary cleanup adoption could run.
+      Recovery now follows its own PUSH-named continuations and SEH landing
+      blocks within the containing span to a fixed point first. Only clean
+      fragments are excluded from the stop/boundary sets. Ordinary adoption
+      then transfers ownership; the entry stays speculative and prunable.
+
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+      -k preexisting_cleanup > build/task13-f22-red.log 2>&1` produced
+      **1 failed, 113 deselected**, exit **1**, before implementation.
+      The fixture seeds the cleanup through another listed frame before
+      discovering its establishing body as a scan candidate.
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+      kit/tools/recomp/tests/test_translate_insns.py
+      > build/task13-f22-green.log 2>&1` now gives **167 passed**, exit **0**.
+      The original cleanup-owner assertions and unseeded interior-handler
+      fixture are restored: those paths are established cleanup ownership,
+      not unterminated fallthrough into an unrelated candidate.
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests
+      --ignore=kit/tools/recomp/tests/test_translate.py
+      --ignore=kit/tools/recomp/tests/test_eaxa.py
+      --ignore=kit/tools/recomp/tests/test_translate_hooks.py
+      > build/task13-f22-portable.log 2>&1` gives **223 passed, 1 skipped**,
+      exit **0**. Formatting again covered **268 handwritten sources**;
+      repository, literal, and whitespace checks passed before the commit.
+
+      Run 21's last missing-module lookup is the expected `uxtheme.dll`
+      miss at line 1142; `d3dxof.dll` is also correctly missing at line 588.
+      `GetLastError`, `FormatMessageW`, and `RaiseException` follow window
+      registration at lines 1796–1800, then line 1816 reports `SEH: unwind
+      target has no live checkpoint (registration=0effff84 target=00809542
+      FS=0fe00000 ESP=0efffb20)`. Missing methods still precede this path,
+      so neither module is stubbed and exception causality remains pending
+      the next run.
+
+  Finding 22 regeneration and run:
+
+  - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+    > build/task13-f22-regenerate.log 2>&1`: exit **0**, **464.0 seconds**
+    of translation; **29,174 functions / 42,112 entries**, **13,100 alternate
+    entries**, and **0 failures / table gaps / undecoded table sites**.
+    `00931248` and `00a0741c` are restored.
+  - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+    RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+    build/recomp/pop_headless > build/task13-run-22.log 2>&1`: exit **6**,
+    **1,951 lines**, **0 frames / message-loop matches**. The log still skips
+    `00bfd16c`, `00bfe8f8`, `00bfe99c`, `00a0805c`, `008fe90c`, and `00a09208`.
+    Following the last miss (line 1907), window creation receives garbled text
+    and dimensions, and `CallWindowProcW` attempts `0087741e` (1919). That is
+    the return address after the buffer-copy CALL at `00877419`, not a new
+    callback. The run ends with the old unwind-checkpoint failure (1948).
+
+  23. **Fixed bare pointers to a relocated method's RET suppressing the
+      method**, kit **779d278** (`Translator: keep weaker instruction pointers
+      as body aliases`). Run 22's missing `00bfe8f8` (616) has a bare scan hit
+      at its RET, `00bfe8ff`; `008fe90c` (937) likewise has a hit at `008fe91f`.
+      These weaker pointers name instruction aliases within the stronger
+      relocated body. Treating them as independent function boundaries cut
+      the methods one instruction before their terminating RET. They now
+      remain callable aliases, and relocated candidates are resolved before
+      immediate guesses. Equal-rank boundaries remain intact.
+
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+      -k bare_pointer_to_relocated > build/task13-f23-red.log 2>&1` gave
+      **1 failed, 114 deselected**, exit **1**. The focused driver/instruction
+      command gave **168 passed**, exit **0**, in `build/task13-f23-first.log`.
+      The same portable command used for finding 22 gave **224 passed,
+      1 skipped**, exit **0**, in `build/task13-f23-portable.log`.
+      `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+      > build/task13-f23-config.log 2>&1` gave **8 passed**, exit **0**.
+      Formatting covered **268 handwritten sources** and the repository,
+      literal, and whitespace checks passed before committing.
+
+      Regeneration (`build/task13-f23-regenerate.log`, same build command)
+      exited **0**: **473.9 seconds**, **29,165 functions / 42,572 entries**,
+      **13,547 alternate entries**, and all three translation gates at **0**.
+      The same headless command with `> build/task13-run-23.log 2>&1` exited
+      **139** (SIGSEGV), with **675,213 lines**, **0 frames / message-loop
+      matches**. Only `00bfd16c` remains an unknown call (line 84); the other
+      omitted methods and corrupted callback pointer from run 22 disappear.
+      Form initialization and GDI calls now proceed until
+      `LoadLibrary("msimg32.dll"): no shims for that module` (675180), followed
+      by `RaiseException` (675182), a dispatched unwind (675185), and
+      `MessageBoxW: External exception C06D007E.` (675212). The old missing
+      checkpoint diagnostic is absent. The PE delay-imports **GradientFill**
+      and **AlphaBlend** from that module; neither exists in the kit. Recheck
+      after the remaining initialization callback is restored before deciding
+      the next blocker. Expected `d3dxof.dll` and `uxtheme.dll` misses remain.
+
+  24. **Fixed a PUSH-derived span fragment inheriting its listed owner's
+      protection**, kit **9e621ae** (`Translator: retain provenance of guessed
+      span fragments`). The remaining `00bfd16c` miss calls `0082ebb0`.
+      `0082eac4` pushes `0082ebac` as a headerless UTF-16 `"\\"` API argument.
+      The continuation heuristic had decoded this data as `POP ESP; ADD ...`,
+      misaligned the real prologue at `0082ebb0`, and attached the resulting
+      instructions to the listed owner. Neither string guard matches this
+      short headerless constant. The approved provenance and boundary rules
+      therefore apply to the guessed fragment itself: record its origin,
+      withdraw its unterminated prefix when a later CALL identifies the
+      method, and preserve the original listing and unrelated fragments.
+      Future span sweeps honor known candidate boundaries; the withdrawn
+      data fragment cannot be reintroduced by the fallback pass.
+
+      `.venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py
+      -k pushed_data_fragment > build/task13-f24-red.log 2>&1` produced
+      **1 failed, 115 deselected**, exit **1**, before implementation. The
+      synthetic fixture discovers the method through a relocated callback
+      after the bad fragment was already adopted. The focused driver and
+      instruction suites (`build/task13-f24-green.log`) give **170 passed**,
+      exit **0**; the portable suites (`build/task13-f24-portable.log`) give
+      **226 passed, 1 skipped**, exit **0**. The config/literal command above,
+      logged to `build/task13-f24-config.log`, gives **8 passed**, exit **0**.
+      Formatting covered **268 handwritten sources**, and repository,
+      literal, and whitespace checks passed before the commit.
+
+      A second regression, `-k span_fragment_keeps`, initially produced
+      **1 failed, 116 deselected** (`build/task13-f24-alias-red.log`): a
+      scanned alias must not split a fragment's own PUSH-named RET epilogue.
+      That ownership guard is included in the final finding 24 commit and
+      the passing counts above. The preliminary regeneration was stopped
+      with SIGTERM before completion (wrapper exit **241**), retained as
+      `build/task13-f24-prereview-regenerate.log`, and restarted from the
+      corrected commit. No preliminary binary was reported as a passing run.
+
+      The fixture also now rejects any RET-switch label for the withdrawn
+      literal. That assertion failed before rebuilding the owning function's
+      cached address/fallthrough metadata (`build/task13-f24-metadata-red.log`,
+      **1 failed, 116 deselected**, exit **1**). The correction is included in
+      the same final commit; the full focused and portable counts above still
+      pass. A second obsolete regeneration was stopped before compilation
+      (exit **241**, `build/task13-f24-metadata-prereview-regenerate.log`).
+
+      The completed finding 24 regeneration
+      (`build/task13-f24-regenerate.log`, same build command) exited **0**:
+      **474.1 seconds**, **29,237 functions / 42,602 entries**, **13,505
+      alternate entries**, **0 failures / table gaps / undecoded table sites**.
+      However, inspecting the generated output showed that `0082ebb0` and
+      `00bfd16c` were still absent. The bad `0082ebac` prefix had moved from
+      the listed owner to a standalone speculative body. The same headless
+      command (`build/task13-run-24.log`) again exited **139**, with **675,213
+      lines**, **0 frames / message-loop matches**, and the same unknown
+      initializer, `msimg32.dll` delay-load exception, and final SIGSEGV as
+      run 23. The passing small fixture did not yet cover that SEH path.
+
+  25. **Fixed cleanup ownership and scan readmission after span withdrawal**,
+      kit **c7ba575** (`Translator: retain cleanup ownership when withdrawing
+      span guesses`). Run 24 still reports `call to unknown target 00bfd16c`
+      at line 84. Adding the omitted method's SEH shape to the fixture revealed
+      the remaining path: its cleanup target triggered premature withdrawal
+      of the guessed fragment, before the method's CALL was discovered. The
+      later immediate/data scan then readmitted that same bad prefix as a
+      standalone body. Existing `finally_owners` and SEH cleanup claims now
+      exempt that target from fragment splitting, just as they already do
+      for ordinary speculative bodies. A withdrawn span prefix cannot be
+      readmitted by weaker pointer evidence. The real CALL can then displace
+      the bad prefix and recover the method with its cleanup intact.
+
+      The fixture is parameterized over both an SEH-containing method and a
+      relocated literal. `.venv/bin/python -m pytest -q
+      kit/tools/recomp/tests/test_translate_driver.py -k pushed_data_fragment
+      > build/task13-f25-red.log 2>&1` initially produced **2 failed, 2 passed,
+      116 deselected**, exit **1**. The focused driver/instruction command
+      (`build/task13-f25-green.log`) now gives **173 passed**, exit **0**;
+      the portable command with the same three private-corpus exclusions
+      (`build/task13-f25-portable.log`) gives **229 passed, 1 skipped**, exit
+      **0**. Formatting covered **268 handwritten sources**, and repository,
+      literal, and whitespace checks passed before committing. The module
+      exception remains pending re-evaluation after regeneration.
+
+      Finding 25 regeneration and final run:
+
+      - `.venv/bin/python tools/build.py --regenerate --target headless --jobs 8
+        > build/task13-f25-regenerate.log 2>&1`: exit **0**, **478.8 seconds**
+        of translation; **29,181 functions / 42,548 entries**, **13,506
+        alternate entries**, and **0 failures / table gaps / undecoded table
+        sites**. The generated code now contains both `fn_0082ebb0` and
+        `fn_00bfd16c`; the erroneous `0082ebac POP ESP` fragment is absent.
+        Native linking succeeds with the existing `__common` alignment
+        reduction warning.
+      - `RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1
+        RECOMP_PROFILE_DIR=build/task13-profile RECOMP_FRAMES=build/task13-frames
+        build/recomp/pop_headless > build/task13-run-25.log 2>&1`: exit **5**,
+        **675,214 lines**, **0 frame files**, and **no unknown call/jump
+        targets**. The previously observed unknown-target diagnostics are
+        absent from this run.
+      - `grep -c 'PeekMessageW\|MsgWaitForMultipleObjectsEx'
+        build/task13-run-25.log`: **0**, grep exit **1** (no matches).
+        The configured frame cap is **600**, but neither the message loop
+        nor presented frames were reached. **Task 13 acceptance is not met.**
+      - `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py
+        > build/task13-f25-config.log 2>&1`: **8 passed**, exit **0**.
+
+  26. **New design boundary: the `msimg32.dll` drawing path is reached.**
+      Run 25 line **675178** reports `LoadLibrary("msimg32.dll"): no shims
+      for that module, reporting it as missing`. `GetLastError` and
+      `RaiseException` follow at **675179–675180**, a dispatched unwind is
+      logged at **675183**, and line **675210** displays
+      `MessageBoxW: External exception C06D007E. -> default button 1`.
+      The pinned PE's delay table names **GradientFill** (IAT `00c36328`,
+      guest thunk `00816a90`) and **AlphaBlend** (IAT `00c3632c`, guest thunk
+      `008168b0`). Neither export is implemented in the kit. This requires
+      a new graphics-shim implementation decision; no placeholder module or
+      success-only export was added. The earlier instructions specifically
+      require reporting a newly needed module rather than inventing a stub.
+
+      After the exception UI and `SetActiveWindow`, line **675213** reports
+      `[host] SIGSEGV in guest thread 1: EIP=0effff7c ESP=0effff58 EBP=0080959b`.
+      The host exits **5**; the earlier `SEH: unwind target has no live
+      checkpoint` diagnostic is absent. The cause of this subsequent fault
+      is not established by the missing-module log and must be re-evaluated
+      after the drawing dependency is addressed. It is not an unhandled
+      `0eedfade` raise; the external-exception message is intact.
+
+      Expected `d3dxof.dll` and `uxtheme.dll` misses remain at lines **589**
+      and **1241**, and startup passes both. The earlier `msctf.dll` miss
+      also passes. Optional `GetLogicalProcessorInformation`,
+      `RtlCompareUnicodeString`, `InitializeConditionVariable`, and
+      `DirectXFileCreate` misses remain unchanged. There are no oversized
+      heap refusals in the final run. The executable hash was rechecked as
+      `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+      Stop here for the new module/graphics decision; no success claim,
+      other plan task, or platform work is included.
