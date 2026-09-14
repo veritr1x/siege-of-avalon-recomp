@@ -3159,3 +3159,149 @@ UTF-16 records rather than C strings.
   600 presented frames, or headless process exit 0. Stop at finding 30's new
   painting/presentation/launcher boundary and record the kit pointer with
   this partial outcome rather than using the plan's success claim.
+
+
+- **2026-09-15 — Task 13 continued: the first live milestone, paint synthesis
+  and headless window capture (finding 30).** The orchestrator accepts run 29
+  above as the **first live milestone**: the guest survives the full 180-second
+  cap in its startup settings form's modal loop, correctly waiting for a click.
+  The runtime must not dismiss that form; Task 14's smoke script owns input.
+  The revised Task 13 acceptance is **600 presented startup-form frames and
+  headless exit 0 before the wall-clock cap**, with message-loop import evidence.
+
+  30. **Implemented the two approved gaps.** Kit **`f1c951c`** (`Runtime:
+      synthesize paint messages from visible update regions`) makes PeekMessage
+      and GetMessage synthesize WM_PAINT after matching queued messages and
+      timers. The region remains pending under both PM_NOREMOVE and PM_REMOVE
+      until BeginPaint or default paint handling validates it. Hidden windows
+      and hidden child hierarchies do not synthesize paint; resize invalidation
+      and synchronous UpdateWindow use the same pending region.
+
+      The new runtime checks failed **5 checks** before the implementation and
+      passed afterward: **887 checks, 0 failures, 1 skipped**. Existing tests
+      asserting no additional WM_SIZE now filter for that message, and a queue
+      drain dispatches paints so they can validate their regions. The WM_PAINT
+      validation behavior follows [Microsoft's message documentation](https://learn.microsoft.com/en-us/windows/win32/gdi/wm-paint).
+      The approved timer-before-paint ordering is retained for this kit's queued
+      timers; Microsoft's PeekMessage documentation lists generated WM_PAINT
+      before generated WM_TIMER in the default Windows ordering.
+
+      Kit **`c0aff3a`** (`Host: capture composed GDI window surfaces in headless
+      frames`) connects the existing display seam to the actual headless PPM
+      writer, including 32-bit ARGB conversion and depth reporting. Window
+      surfaces track writes; EndPaint/ReleaseDC and message pumps publish dirty
+      visible top-level surfaces in creation order, with the topmost group last.
+      Child DCs already draw into their owning top-level surface. Clean polls
+      do not count as new frames. The compositor owns its pixels and preserves
+      the DirectDraw primary as its base when present, including a primary
+      presentation following window drawing; guest primary memory is unchanged.
+      This follows the latest decision's primary-under-window ordering.
+
+      The new **nogame headless_tests** suite compiles the production headless
+      presenter with its guest-boot entry renamed. It drives real window/GDI
+      imports and checks the PPM pixels, retained-DC pump presentation, clean
+      polls, hidden surfaces, topmost composition, and the DirectDraw base.
+      The initial five capture assertions failed; the final suite passes
+      **49 checks, 0 failures**. No fake frame counter or launcher input is added.
+
+  31. **Fixed a resize notification feedback loop before painting.** The first
+      run after finding 30 (`build/task13-run-30.log`) repeatedly dispatches
+      messages through the geometry handler at `00966434`, reaches
+      SetWindowPos from `00966229`, and returns to the pump without BeginPaint.
+      The shim posted WM_MOVE/WM_SIZE whenever their suppression flags were
+      absent, including requests for the unchanged position and size. A layout
+      handler setting the same geometry could therefore keep paint behind an
+      endlessly replenished message queue.
+
+      Kit **`2e98a29`** (`Runtime: notify window geometry only when it changes`)
+      compares the requested geometry before notifying or invalidating it.
+      Its unchanged-geometry regression failed (and left a second queued
+      notification that failed the following assertion); afterward the runtime
+      suite passes **888 checks, 0 failures, 1 skipped** and headless capture
+      still passes **49 checks**. Verbose SetWindowPos diagnostics now include
+      the geometry, flags, and whether position or size actually changed.
+
+
+      Run 30 finishes at its 180-second wall-clock cap with **zero frames**
+      (line **39947034**), then guest ExitProcess(0), host exit **1**. After
+      the geometry fix, run 31 shows unchanged SetWindowPos requests as
+      `changed=0/0` (for example **676230**, **676504**) and reaches BeginPaint
+      at **676562**, EndPaint at **676816**, and the first capture at **676817**.
+      The 320x406 form is positioned at **352,181** in the 1024x768 composite.
+
+      The first captured file, `build/task13-frames-31/frame_0000.ppm`, is
+      **1024x768**, **130 exact RGB colours** (the host's coarse colour buckets
+      report 29), and **129,920 non-background pixels**. Inspection of the
+      converted PNG shows a **magenta 320x406 rectangle on a black background,
+      with one small beige checkmark-like patch near its lower right**. There
+      are no readable labels or normal form controls in the capture. This is
+      evidence that painting and capture execute, not a fully rendered menu.
+      The guest enters WaitMessage after the paint. No launcher input is sent.
+
+      **Final run 31 outcome:** the count stays at **one presented frame**.
+      At line **40319726**, the host posts WM_CLOSE at **180.0 seconds / one
+      frame**. Lines **40320593–40320594** record ExitProcess(0); the summary
+      at **40320600–40320601** confirms one written 32-bit frame, and line
+      **40320617** confirms guest exit code zero. The process also exits **0**.
+      Import statistics record **3,603,945 PeekMessageW calls**, **3,603,898
+      WaitMessage calls**, and exactly **one BeginPaint / EndPaint pair**.
+      There is no RaiseException, SEH abort, or unknown-target diagnostic.
+      Optional lookup misses remain GetLogicalProcessorInformation,
+      RtlCompareUnicodeString, InitializeConditionVariable, and DirectXFileCreate;
+      missing modules remain msctf.dll, d3dxof.dll, and uxtheme.dll. Startup
+      proceeds past each without an exception.
+
+  Validation for findings 30–31, from the game root (all native builds through
+  the existing test/build-tool helper; logs and frames remain ignored):
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f30a-runtime-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f30a-runtime-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task13-f30b-headless-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task13-f30b-headless-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task13-f30b-gdi.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f30b-runtime_tests.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task13-f30b-dx_tests.log 2>&1
+  .venv/bin/python build/task-k1-native.py host_tests --verbose > build/task13-f30b-host_tests.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task13-f30-config.log 2>&1
+  .venv/bin/python tools/build.py --target headless --jobs 8 > build/task13-f30-headless-build.log 2>&1
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task13-profile-30 RECOMP_FRAMES=build/task13-frames-30 RECOMP_FRAME_EVERY=1 build/recomp/pop_headless > build/task13-run-30.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f31-runtime-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task13-f31-runtime-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task13-f31-headless-tests.log 2>&1
+  .venv/bin/python tools/build.py --target headless --jobs 8 > build/task13-f31-headless-build.log 2>&1
+  RECOMP_MAX_FRAMES=600 RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task13-profile-31 RECOMP_FRAMES=build/task13-frames-31 RECOMP_FRAME_EVERY=1 build/recomp/pop_headless > build/task13-run-31.log 2>&1
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/task13-frames-31/frame_0000.ppm build/task13-frames-31/frame_0000.png
+  ```
+
+  - Paint runtime regression: **887 checks, 5 failures, 1 skipped**, exit 1;
+    final green **887 checks, 0 failures, 1 skipped**, exit 0. During the
+    first implementation run, two old geometry tests also required narrowing
+    their filters to the WM_SIZE messages they actually assert.
+  - Headless capture red: **37 checks, 5 failures**, exit 1. Final capture
+    coverage including DirectDraw: **49 checks, 0 failures**, exit 0, both
+    before and after the geometry fix. The test setup was adapted to manual
+    guest-stack writes (there is no push32 helper) and runtime defaults
+    instead of linking mod hooks that require generated game tables.
+  - Existing GDI: **73 checks, 0 failures**; runtime: **887 checks, 0 failures,
+    1 skipped**; DirectX: **138819 checks, 0 failures**; host: **3958362 checks,
+    0 failures**. Every native suite reports **100% tests passed** and exits 0.
+    Game config/literal pytest: **8 passed**, exit 0. The runtime skip remains
+    the existing imported-data-symbol check for an image without such symbols.
+  - Geometry regression red: **888 checks, 2 failures, 1 skipped**, exit 1;
+    green: **888 checks, 0 failures, 1 skipped**, exit 0.
+  - Both headless rebuilds link successfully, exit 0; the existing common
+    section alignment warning remains. **No regeneration** was needed.
+    Formatting and repository/literal/whitespace checks pass before each kit
+    commit. Formatting processes 269 sources before the paint commit and
+    270 after adding the headless test. The helper now also selects the new
+    `headless_tests` CTest target; the root wrapper still has no `-R` option.
+
+  **Task 13's revised acceptance remains unmet:** run 31 exits 0 only after
+  the wall-clock cap and presents **1/600 frames**, with the incomplete image
+  described above as its first and last capture. This continuation closes
+  the approved paint/presenter gaps and records the first live milestone,
+  but does not establish a fully rendered startup form, 600 frames before
+  the cap, or gameplay. Stop here under the explicit instruction to report
+  a painted form whose frame count stalls. No artificial repeat presents,
+  forced invalidation loop, automatic click, or Task 14 smoke work is added.

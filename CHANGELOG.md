@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Kit `siege-delphi` 6e755d5 preserves pushed RET continuations, keeps
+- Kit `siege-delphi` 2e98a29 preserves pushed RET continuations, keeps
   speculative SEH bodies prunable, dispatches computed jumps within unrolled
   routines, supports per-game alignment and zero-register SEH frames, and
   interprets bounded compiler-generated guest thunks. Exact x87 integer
@@ -23,12 +23,13 @@
   `msimg32.dll` now supplies tested gradients, alpha blending and color-key
   blits. Display enumeration accepts uninitialized DEVMODE sizes and shares
   DirectDraw's supported modes; proven jumps through popped return addresses
-  bypass entry dispatch. The startup-settings modal loop now polls messages
-  1,171,381 times over 180 seconds without Delphi exceptions, then handles
-  the host's close request and calls ExitProcess(0). The headless host exits
-  1 with zero presented frames. Task 13 remains incomplete pending window
-  painting, headless GDI presentation, and progression past the startup form;
-  the main application loop and 600-frame, host-exit-0 acceptance are unverified.
+  bypass entry dispatch. The Delphi runtime initialises and the VCL message
+  loop runs under the headless host: the startup settings form waits for input
+  without crashing, the first live milestone. Paint synthesis, GDI surface
+  capture, and unchanged-geometry notification suppression now produce one
+  frame before the count stalls. It shows a magenta form rectangle with a small
+  beige patch, without readable labels. Host exit is 0 at the 180-second cap;
+  Task 13's revised 600-frame acceptance before that cap remains unmet.
 
 - Kit pinned to `siege-delphi` f93fdc6: the wide kernel32, user32, advapi32
   and version APIs, oleaut32, comctl32, a VCL window model, a GDI canvas
