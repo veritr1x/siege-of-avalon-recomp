@@ -3439,3 +3439,128 @@ UTF-16 records rather than C strings.
   is the first live paint; run 32 proves the 600-frame, exit-0 startup-form
   run before the wall-clock cap. The drawing defects above are handed to
   Task 14, with their observed call results and no speculative rendering fix.
+
+- **2026-09-15 — Task 14: DrawText paints; main-menu acceptance blocked by
+  smoke input routing.** Kit **`35277ef`** (`GDI: rasterize wide DrawText
+  through the bitmap canvas`) fixes the observed successful-but-invisible
+  DrawTextW calls. The USER32 entry previously returned metrics and logged
+  that rasterization was unavailable; it never reached the bitmap font.
+  It now delegates to GDI, sharing ExtTextOutW's glyph renderer, selected
+  font, text/background colours and canvas clipping. Basic alignment,
+  CRLF, word wrapping, tab expansion and mnemonic processing are supported.
+  CALCRECT measures without painting, including a screen DC with no backing
+  surface. DrawTextExW uses the same path. This follows the
+  [DrawTextW contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-drawtextw).
+  Full font-face fidelity and advanced layout remain outside this fix.
+
+  **Test-first evidence:** the new pixel/metrics regression failed **4
+  assertions, 82 checks** before implementation. The first green run passed
+  all 82; added layout coverage passed 85. Reviewing the diagnostic run
+  exposed a new CALCRECT regression on screen DCs: a dedicated test failed
+  **1 assertion, 86 checks**, then passed after moving the backing-surface
+  requirement to the drawing path. Final GDI: **86 checks, 0 failures**.
+  Runtime: **893 checks, 0 failures, 1 skipped** (the existing imported-data
+  prerequisite skip). Config/literal pytest: **8 passed**.
+
+  **Paint findings:** the first smoke capture reproduces the 320x406 form
+  at (352,181), with its 24x24 checkmark at (567,482) through (590,505).
+  Despite `RECOMP_SMOKE_DRAWABLE=800x600`, the retained GDI guest surface is
+  **1024x768**: `gdi_present_windows` uses that desktop size before a
+  DirectDraw primary exists. The script's intended click is (578,493).
+
+  The pinned executable's `TFRMLAUNCHSETTING` resource explicitly declares
+  `Color=clFuchsia`, `TransparentColor=True` and
+  `TransparentColorValue=clFuchsia`. Its `imgBack` is a transparent,
+  client-aligned TImage with **no Picture.Data**; `imgCheck` carries a 24x24
+  PNG. This confirms that the magenta comes from the form's own colour/key,
+  not COLOR_BTNFACE (the kit's value for index 15 remains `0x00f0f0f0`).
+  A temporary brush trace records a solid brush with `color=00ff00ff`
+  immediately before the form paint's FillRect. The actual drawn version
+  label uses `text_color=0015585f`, transparent background mode and flags
+  `0x40`; it is neither magenta nor equal to its background. Its pixels now
+  appear as dark olive **1.03.1** at (378,205) through (420,218). Other
+  control labels and the skin are still absent. No background-image file
+  open was observed: the only CreateFileW call opens Siege.log. The path
+  intended to populate imgBack is still unverified.
+
+  **Blocking input evidence:** run 3's temporary diagnostic trace records:
+
+  ```text
+  TASK14 INPUT hwnd=00020004 msg=200 xy=578,479 visible=0 class=#atom49152
+  TASK14 INPUT hwnd=00020004 msg=201 xy=578,479 visible=0 class=#atom49152
+  TASK14 INPUT hwnd=00020004 msg=202 xy=578,479 visible=0 class=#atom49152
+  ```
+
+  `build/task14-run-3.log` lines 1780009–1780010 and 1805019 identify the
+  mouse move/down/up. Creation logs identify **0x00020004** as the hidden
+  `tputilwindow`, and **0x00020010** as the startup form. The smoke host's
+  `move_by` clamps absolute coordinates to **639,479**; its `post` always
+  sends to `host_main_window()`. USER32 retains the first-created window
+  as that handle. Thus the requested click is both clamped and delivered
+  to the wrong window. Script-coordinate adjustment cannot correct the
+  recipient. Fixing generic host pointer bounds, visible-window targeting,
+  client-coordinate conversion and capture routing requires host/USER32
+  input work outside Task 14's stated drawing files; no such fix or guest
+  callback bypass was added. All temporary diagnostics were removed before
+  the kit commit and the final smoke build.
+
+  **Final clean smoke run:** `build/run-smoke.log`, exit **0**, reports
+  **12.0 seconds**, **462 presented frames**, script **3/3 actions** and
+  guest exit code **0**. Both dumps still show the startup settings form.
+  They have the magenta rectangle, checkmark and newly drawn version text;
+  there is no title screen or menu. `dump` actually names its output
+  `smoke_main-menu_present.ppm`, so it was copied to the planned
+  `main-menu.ppm` name before conversion. The acceptance measurement is
+  **`(1024, 768) 131`**, failing both the requested dimensions and the
+  greater-than-1000-colours condition. The script has no image assertions;
+  its `all expectations met` footer is not main-menu acceptance.
+
+  The final log contains **5 BitBlt and 5 StretchBlt entries** (one of the
+  latter is the StretchDIBits adapter's internal call), **0 DirectDraw
+  calls**, and therefore **0 DirectDraw Blt/Flip calls**. DrawTextW is
+  called three times and returns 16 each time. StretchDIBits returns 24;
+  LoadBitmapW, LoadImageW, CreateDIBitmap, SetDIBitsToDevice and ExtTextOutW
+  remain uncalled. There is no unknown-target or unhandled-exception
+  diagnostic. DirectDraw mode selection, fallback interfaces and primary
+  composition cannot be assessed until input dismisses the form. No INI
+  override was needed or applied; no DirectDraw mode request was reached.
+
+  Exact validation commands, from the game root (outputs remain ignored):
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-text-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-text-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-measure-red.log 2>&1
+  .venv/bin/python kit/tools/format.py --write > build/task14-format.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-text-final.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-runtime.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-config.log 2>&1
+  .venv/bin/python kit/tools/check_game_literals.py > build/task14-literals.log 2>&1
+  .venv/bin/python kit/tools/check_repo.py > build/task14-repo-check.log 2>&1
+  git -C kit diff --cached --check
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=build/task14-profile-4 RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16,800x600x32 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/run-smoke.log 2>&1
+  cp build/smoke/smoke_main-menu_present.ppm build/smoke/main-menu.ppm
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/main-menu.ppm build/smoke/main-menu.png
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); print(im.size, len(set(im.getdata())))"
+  ```
+
+  - Red commands exit 1 with `82 checks, 4 failures` and
+    `86 checks, 1 failures`; final native commands exit 0 with
+    `100% tests passed, 0 tests failed out of 1` and the counts above.
+  - Formatting: `Formatted 270 handwritten source files`; repository check:
+    `Tracked source boundaries and local documentation links passed`.
+    Literal and staged whitespace checks exit 0 without output.
+  - Build exits 0; the existing common-section alignment linker warning
+    remains. Converter prints `(1024x768)`; the pixel check prints
+    `(1024, 768) 131` and exits 0, although acceptance fails.
+  - As in Task 13, the root test wrapper has no `-R`; the existing ignored
+    helper delegates native builds to the kit's test/build modules, then
+    selects CTest. No direct compiler invocation. The text adapter required
+    a delegation change in `runtime/user32_wide.cpp` in addition to GDI.
+  - Only macOS native validation ran. No translator change, regeneration,
+    push, player-save change, private input commit or other plan task.
+
+  **Task 14 is incomplete.** The smoke script and tested text fix are
+  committed with this blocked handoff; the changelog does not claim that
+  the main menu draws. Resume after the input-routing scope is resolved.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Task 14: the startup form's version text now draws with the kit's bitmap
+  font (kit `siege-delphi` 35277ef). The main-menu smoke script is recorded,
+  but progression is blocked by host mouse routing to a hidden VCL window
+  and its fixed 640x480 pointer clamp; the main menu has not been reached.
+
 - The Delphi runtime initialises, the VCL message loop runs and the startup settings form paints under the headless host.
 - Kit `siege-delphi` a764102 preserves pushed RET continuations, keeps
   speculative SEH bodies prunable, dispatches computed jumps within unrolled
