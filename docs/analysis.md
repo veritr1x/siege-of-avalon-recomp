@@ -5741,3 +5741,59 @@ exit, so the session has to be quit from the game.
 line contains that path - including the build chain's own - so "game
 running" and a chain's "RELAUNCHED" were unreliable until they matched the
 process name with `pgrep -x`.
+
+## The executable that went missing (2026-09-15)
+
+Between 21:53 and 21:57 `original/patched/Siege.exe` disappeared. It had not
+been deleted: `Siege_old.exe` hashed to the pinned `645eaa1e...`. Beside it
+were `Siege_old2.exe` (a copy of the patch's `Siege_UnspezifischeVersion.exe`),
+an empty `update/` folder, `VersionNumber.txt` and `VersionNumber2.txt`, and a
+fresh `Siege.log` whose header reads `SoAMods.exe` - the 1.19 patch's own mod
+launcher and updater, which fetches `versionurl` from siege-of-avalon.org and
+swaps executables. `original/gog` gained a `Siege.log`, `games/` and
+`siege.ini` at the same moment. None of it came from the kit: its
+`URLDownloadToFileW` and `MoveFileW` are logging-only, the one session that
+asked for a move ended at 21:44, and a PE cannot run on macOS - the launcher's
+"Play Alt Version" button is `ShellExecute('SoAMods.exe')`, which the kit
+refuses. It was a native run outside the port. At the user's choice the
+pinned build was renamed back; the updater's other files were left in place.
+
+## The character creator, every control (2026-09-15)
+
+`smoke/creator-options.script` clicks through all of it with a frame after
+each step, using the rectangles in `TCreation` (the newest local source is
+`soa/siege-of-avalon-master`, which matches the 1.19 binary's Hardmode,
+gender note and tutorial prompt). All 26 frames, faster blend included:
+
+- hover descriptions in the right-hand panel for every control;
+- stat `+` costs 4 training points for strength to charm and 2 for
+  mysticism to stealth, `-` refunds only what was added (20 -> 16 -> 20 on
+  strength, 20 -> 18 on stealth);
+- **Hardmode** toggles and says "In Hardmode there's no possibility to save
+  your game on your own!" - in the binary the game checks a HardMode title
+  in its QuickSave handler (`FUN_007fcda8`, beside the `QuickSave` and
+  `Saving screenshot` strings) and in a second command handler
+  (`FUN_007fd25c`); beating the game with it is `ACH_HARDMODE`;
+- training style (Fighter/Scout/Magician; Scout sets 9/12/7/10/7/2/5/16),
+  shirt, pants, hair colour, hairstyle and beard lists each open, select,
+  label the choice and update the portrait;
+- the appearance arrows swap models, and a female model raises "Note:
+  Actually not designed for a female character";
+- typing sets the name; Continue asks "Do you want to play the tutorial?".
+
+**Open:** once the beard list and the gender note are closed, parts of them
+stay on screen although the game has closed them logically - typing the name
+afterwards, which `KeyDown` refuses while the note is open, proves it.
+
+## Source port or recompilation (2026-09-15)
+
+The user asked whether working from the source would be faster for a
+multiplatform SoA. The newest local tree has 142,793 lines of game Pascal in
+94 units, and it is Windows through and through: 208 x86 `asm` blocks (every
+one a rewrite on ARM64), DirectDraw surfaces in 44 units with 822 back-buffer
+uses, VCL in 50 units, WinAPI in 53, Media Foundation for movies (a 268k-line
+binding), FMOD 3, and the closed `Dfx_p6s.dll`. A source port replaces that
+whole layer on a new toolchain before the game draws a frame; the kit already
+provides it, and 1.19 runs through the menus, the whole creator and into the
+first level. Recommendation recorded: continue the recompilation, and use the
+source as the map it was tonight.

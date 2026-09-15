@@ -1,0 +1,114 @@
+# Every control on the character creator, one at a time, with a frame after
+# each. Guest pixels in the 800x600 frame; rectangles are the creator's own
+# (TCreation.CreateCollisionRects, MouseDown and OpenBox in the game source).
+wait 6000
+click left 584 450
+wait 7000
+click left 400 68
+wait 4000
+dump c00-initial
+# Hover: the right-hand panel describes what is under the pointer.
+move 360 224
+wait 900
+dump c01-hover-training-points
+move 340 251
+wait 900
+dump c02-hover-strength
+# Stats: + costs 4 points for strength..charm, 2 for mysticism..stealth; - only refunds.
+click left 416 251
+wait 900
+dump c03-strength-plus
+click left 397 251
+wait 900
+dump c04-strength-minus
+click left 416 419
+wait 900
+dump c05-stealth-plus
+# Hardmode On / Off.
+click left 416 41
+wait 900
+dump c06-hardmode-on
+click left 456 41
+wait 900
+dump c07-hardmode-off
+# Training style: open the box, pick Scout, OK.
+click left 384 146
+wait 1200
+dump c08-training-open
+click left 526 143
+wait 1000
+dump c09-training-scout
+click left 526 220
+wait 1000
+dump c10-training-ok
+# Shirt: open, pick the second, OK.
+click left 197 250
+wait 1200
+dump c11-shirt-open
+click left 340 309
+wait 900
+click left 340 400
+wait 1000
+dump c12-shirt-ok
+# Pants.
+click left 197 292
+wait 1200
+dump c13-pants-open
+click left 340 351
+wait 900
+click left 340 442
+wait 1000
+dump c14-pants-ok
+# Hair colour.
+click left 197 334
+wait 1200
+dump c15-haircolor-open
+click left 340 393
+wait 900
+click left 340 484
+wait 1000
+dump c16-haircolor-ok
+# Hairstyle.
+click left 197 377
+wait 1200
+dump c17-hairstyle-open
+click left 340 435
+wait 900
+click left 340 526
+wait 1000
+dump c18-hairstyle-ok
+# Beard (braids for a female model).
+click left 197 420
+wait 1200
+dump c19-beard-open
+click left 340 477
+wait 900
+click left 340 568
+wait 1000
+dump c20-beard-ok
+# Appearance: a female model opens the gender note; its button closes it.
+click left 267 155
+wait 1800
+dump c21-appearance-right
+click left 588 414
+wait 900
+dump c22-note-closed
+click left 107 155
+wait 1800
+dump c23-appearance-left
+click left 588 414
+wait 900
+# Name: typed without clicking the field.
+key N down
+key N up
+key Y down
+key Y up
+key P down
+key P up
+wait 900
+dump c24-name
+# Continue: needs a name and a training style, then asks about the tutorial.
+click left 600 470
+wait 1800
+dump c25-continue-tutorial-box
+wait 500
