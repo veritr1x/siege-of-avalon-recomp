@@ -5861,3 +5861,40 @@ to `siege.ini` by Play):
   Version* runs `SoAMods.exe`, a Windows executable; neither can work in
   the port. The kit draws DirectDraw itself, so the DirectDraw-DLL choices
   are not expected to change how the port draws; that is untested.
+
+## BlackChancery, resolutions and three launcher settings (2026-09-15)
+
+**BlackChancery.** The launcher's font is RT_FONT 1 in `Siege.exe`, a
+56,732-byte TrueType font whose family is `BlackChancery`, registered with
+`AddFontMemResourceEx` from a `TResourceStream`. The kit discarded the data
+and drew every string in 8x16 cells. Kit `127bd47` keeps registered fonts and
+rasterizes them with stb_truetype; `smoke/launcher-fields.script` shows all
+five value fields in BlackChancery. The kit ships no font and its tests use a
+generated two-glyph one.
+
+**Resolutions.** The launcher lists only the three sizes the game has layouts
+for (`cOriginal`, `cHD`, `cFullHD` in `SoAOS.Types.pas`), from
+`EnumDisplaySettings`, needing an exact mode when Fullscreen is ticked. The
+kit's built-in mode table has 800x600, 1280x720 and 1920x1080 at 16 bpp; only
+the smokes' `RECOMP_DDRAW_MODES=800x600x16` hid the other two.
+`smoke/launcher-resolutions.script` (no mode variable) cycles all three, and
+`smoke/main-menu.script` with `ScreenResolution=720` and `=1080` reaches the
+main menu at 1280x720 and 1920x1080. The shipped `siege.ini` defaults to 720.
+
+**DisableEvent.** The game's settings loader (`00804d45`) stores it at
+`0x8fa4a1`; `0x8fa4a0` (event active) is set only when two date words match,
+an event is announced (`0x8fa49c`), and DisableEvent is 0. The announcement
+is `VersionNumber2.txt`, which the launcher downloads from
+siege-of-avalon.org: the shipped copy names `Event3Active`, "Dwarves have
+come to the forest of Avalon", and the lines `10` and `2025` - read here as
+the event's month and year, from the compares, not confirmed.
+
+**CustomDDraw and Blue Pixel Fix.** On Windows they choose a DirectDraw
+wrapper DLL; the patch ships `ddraw_Win10.dll`, `ddraw_allg.dll`,
+`ddraw_nichtWin10.dll`, `SoADDraw.dll` and Wine's `wined3d.dll`/`libwine.dll`.
+The port draws DirectDraw itself and cannot load a Windows DLL. With
+`CustomDDrawDLL=true` and `DDrawVersion=ddraw_Win10` the game's
+`LoadLibrary("ddraw_win10.dll")` is refused and the run dies with SIGBUS at
+`0073061c`, a try-frame restore, before the main menu. The defaults
+(`customddrawdll=false`, `AltCursor=false`) are what the port needs; the kit
+has no way yet to serve a program's wrapper name as its own DirectDraw.

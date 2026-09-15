@@ -1,0 +1,13 @@
+# The launcher's Resolution arrow, with the kit's full display-mode list (run
+# without RECOMP_DDRAW_MODES): 800 x 600 (Original), 1280 x 720 (HD), then
+# 1920 x 1080 (FullHD). The launcher offers only the three the game has
+# layouts for, and each needs an exact display mode when Fullscreen is ticked.
+wait 6000
+dump res0
+click left 525 377
+wait 700
+dump res1
+click left 525 377
+wait 700
+dump res2
+wait 300
