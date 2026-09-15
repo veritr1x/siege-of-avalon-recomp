@@ -5400,3 +5400,104 @@ step that used to kill the run. The map still loads on the retranslated
 image: `End Tiles: 846`, `End Items: 1239`. ESCAPE does not close the
 conversation in this game, which is the game's own behaviour; what it no
 longer does is crash.
+
+## The 1.19 image translates (2026-09-15)
+
+The three defects left open by the earlier attempt are closed, and two of
+them were not what the note said they were.
+
+**The jump-table failure and the off-image call.** Both were the same family
+`--allow-unmodelled` already existed for, and both are fixed in the kit: the
+jump-table pass now has the tolerance the emit path had (`17ce624`), and a
+direct call to a literal outside the image becomes a trap at its own address
+(`17ce624`). The 1.19 image has one: `00419cf4 CALL 0x3c419df8`.
+
+**`fn_00410170` jumping to `0x004103cf` is not a truncated listing.** The
+target is three bytes inside a `CALL` that another function lists at
+`0x004103cb`, so no entry point can be declared for it and no recovery can
+make it real: the jump itself was decoded out of padding. Kit `a98dbb6`
+turns a dangling dispatch target into the trap a withdrawn block gets, under
+the same switch.
+
+**The entry stub failed in a pass nothing guarded.** Its real body ends at
+`0x008420a4 JMP EAX` and Ghidra decodes the padding behind it, where
+sixteen-bit addressing appears at `0x008421b0`. That instruction was always
+going to become a trap; what failed the build was `popped_return_jumps`,
+which parses every instruction's operands before any of them is emitted.
+The rule was already written one line above the parse - "All unmodelled forms
+invalidate the proof" - so an operand that cannot be spelled now takes the
+`unknown` state instead of raising (kit `1c85001`).
+
+### SSE2, because a modern Delphi runtime does not ask
+
+With the image translating, the first run reached the entry point and
+aborted: `unmodelled instruction at 00408273 reached`, inside `FillChar`.
+The 1.19 patch is built with a current Delphi, whose `FillChar` and `Move`
+use SSE2 unconditionally - SSE2 predates every CPU that compiler supports,
+so there is no feature test and no scalar path behind it.
+
+Kit `45d303c` models the data-movement subset: `MOVUPS`, `MOVAPS`, `MOVDQU`,
+`MOVDQA`, `MOVQ`, `MOVD` and `PSHUFD`, with the fences and prefetch hints as
+the no-ops they are here. Registers are held as dword lanes, which is the
+granularity every modelled form uses, so a copy keeps its byte order on a
+little-endian host for free. No arithmetic: nothing reads a lane as a number,
+and anything that would have to still traps.
+
+The AVX forms beside them in the same routines stay traps. They are gated on
+`TEST dword ptr [0x00852064],0x1`, set from CPUID, and this kit's CPUID
+advertises no SSE and no AVX - the one place where reporting less than the
+host is what makes a small subset sufficient.
+
+### 434 interface adapters, withdrawn by a circular rule
+
+The run then reached the application's own startup and died after four
+`call to unknown target` lines. The first, `004ebf55`, is a Delphi interface
+adapter: `ADD dword ptr [ESP+4],-8` to bias Self, then a `JMP` to the
+implementation. Delphi emits one per interface method, this image has 434,
+and Ghidra lists none of them - they are packed without padding or alignment
+and are named only by a vtable slot.
+
+The scan does find them. It then withdraws every one, for a reason that is
+circular: a recovered block whose dispatch target is not an entry point was
+never code, and the address all 434 jump to is not listed either.
+`0x00412250` is a real function - `PUSH EBP; MOV EBP,ESP; OR EAX,-1; POP EBP;
+RET 4` - sitting in a two-byte gap behind `FUN_00412228`.
+
+`[translate] entry_points = [0x00412250]` names it, and the thunks live.
+
+Only that one. Of the 61 withdrawn blocks the rule is right 47 times, on
+targets like `cb59619c` and `dbb4db47` that are plainly misdecoded. Eleven of
+the remaining fourteen pass the "looks like code" heuristic and disassemble
+to nonsense (`ADD AL,0x8B; SALC`), so they stay withdrawn: naming an entry
+point moves the boundaries discovery settles on, and an address that fixes
+nothing is not free.
+
+### Where 1.19 stands
+
+`tools/build.py --regenerate --allow-unmodelled ...` translates 28504 of
+28562 functions into 43232 entry points and links `pop_smoke`. The smoke
+runs its whole script and exits 4 with two frames, where every earlier
+attempt aborted in seconds:
+
+- it clears the entry stub, the RTL's `FillChar` and `Move`, and the
+  interface adapters;
+- it initialises the VCL far enough to probe the whole of `uxtheme`;
+- it puts up one of the game's own dialogs - "Dieses 'Portable Network
+  Graphics' Bild enthaelt einen unbekannten aber notwendigen Teil, welcher
+  nicht entschluesselt werden kann" - which is the game's error handling
+  working, not a translation failure;
+- `smoke_main-menu_present.ppm` draws the engine's version string, `1.17.1`,
+  on black. `smoke_startup-form_present.ppm` has two colours.
+
+**Next on this image.** The startup form's PNG artwork does not decode, so
+the form comes up blank behind its text. The message is Delphi's PNG
+library refusing a critical chunk it does not know, which is far more likely
+to be the bytes it is handed than the file on disk: the next step is to find
+where the image is read - resource or file - and compare what the guest
+receives with what is there. The 2021 build has a related open item (the
+startup form's PNG transparency), so the two may share a cause.
+
+**Not attempted.** The native blend override stays out: `native/dxr_blend.h`
+defines `FN_00a321c0`, the 2021 build's address for `dxrCopyRectBlend`, and
+this image links at a different base. That address has to be re-derived from
+the new listing before the override can come back.
