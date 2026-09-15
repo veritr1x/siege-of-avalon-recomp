@@ -5501,3 +5501,38 @@ startup form's PNG transparency), so the two may share a cause.
 defines `FN_00a321c0`, the 2021 build's address for `dxrCopyRectBlend`, and
 this image links at a different base. That address has to be re-derived from
 the new listing before the override can come back.
+
+### The startup PNG: what it is not (2026-09-15)
+
+The 1.19 startup form raises the game's own `EPngUnknownCriticalChunk` -
+"unknown but necessary chunk" - and comes up blank behind its text. It is not
+fatal: the dialog is dismissed and the run continues to a frame. These are
+ruled out, each by evidence rather than argument.
+
+- **The bytes are right.** `STARTUPBACK` is RT_RCDATA holding one PNG, 374882
+  bytes, and it walks cleanly: IHDR, gAMA, pHYs, tEXt, six IDATs, IEND, ending
+  exactly on the resource's last byte. Every critical chunk is one the library
+  has a class for (`TChunkIHDR` and friends are in its RTTI). The other
+  resource, `TFRMLAUNCHSETTING`, holds eighteen more well-formed PNGs.
+- **The resource layer serves them correctly.** The import trace shows
+  `FindResourceW`, `LoadResource`, `SizeofResource` returning 0x5b862 - the
+  exact PNG length - and `LockResource` handing back the base.
+- **SSE2 is not corrupting the copy.** The subset added for this image now has
+  a second Unicorn case covering indexed addressing (`[EDI + EDX*1 + 0x10]`)
+  and register-to-register moves, which the first one missed, because the
+  runtime's Move and FillChar use exactly those. Both pass.
+- **The Move/FillChar threshold is not starved.** Both routines choose a
+  streaming path by comparing the count against `[0x00843028]`, which
+  `FUN_00408230` lowers to 0x400 only when a CPU feature bit is set. This
+  kit's CPUID does not set it - but the global's static value is 0x7fffffff,
+  so the comparison simply never fires and small copies keep the safe path.
+
+**What is left.** The reader got a four-byte name it does not know whose first
+letter is upper case. With the file verified good, either the stream is
+mis-positioned when it reads that header - the interesting candidate is
+`TChunkIDAT.LoadFromStream`, which inflates during chunk loading and leaves
+the position for the next header - or the name lookup itself fails. The
+lookup is not a registry: no instruction anywhere loads a chunk class's VMT
+as an immediate, so the classes are never registered and the decision must be
+made inline. Finding that comparison is the next step, and reading what the
+guest actually has in the four bytes at that moment is what settles it.
