@@ -5660,3 +5660,18 @@ trap, no missing DirectInput entry, and
 with training points 20 and every stat value drawn - the blend, at its 1.19
 address and aligned offsets, working. The game repo pins the kit at the
 DirectInput W entries.
+**Continue crashed again, one layer down.** With `0x00664a28` named, the
+same abort came back without the unknown-call line before it, and this time
+the runtime said precisely why: `no block entry for indirect jump to
+0x0080e3a9 from 0x0080e3a0`. The site is `PUSH 0x80e3a9; ...; POP EAX; JMP
+EAX` - Delphi leaving a finally block - inside `FUN_0080d58c`, a listed
+function whose listing stops at `0x0080da19` and whose body the translator
+had grown past it by following jumps. It could not follow the push: the
+jump dispatches on a variable, so the continuation was never a dangling
+literal, and recursive descent does not see through a PUSH. The body's
+switch over its own instructions therefore lacked the one address the jump
+wanted. Kit (see changelog) makes a body that consumes a pushed address
+with `POP reg; JMP reg` grow into any in-window code address it pushes and
+does not contain. The first draft grew into try-frame handlers as well and
+decoded their stubs out of step; the driver suite's cleanup-alias tests
+caught it before it shipped.
