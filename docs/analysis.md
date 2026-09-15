@@ -5191,3 +5191,41 @@ before the alpha-blending work.
   (`ScreenResolution=720`, `ForceD3DFullscreen=1`), which the smoke seed may
   need to account for.
 
+### The 1.19 image needs its own translator bring-up (2026-09-15)
+
+Three attempts at `tools/build.py --regenerate` against the new image each
+stopped on a different listing defect, all of the same family the 2021 build
+needed about thirty findings to work through. Two were fixed in the kit and
+are worth having whatever happens next:
+
+1. `INSD ES:EDI,DX` in the entry stub: the port string instructions had no
+   case at all. They now translate through the port shims (kit `7a6f77b`).
+2. 16-bit addressing (`[BX + DI]`) a few bytes later: an instruction the
+   translator cannot model now becomes a trap at its own address under
+   `--allow-unmodelled REASON`, which also reports every one (kit `af1a9fe`).
+   An analysis pass that used to crash the build on a body it could not parse
+   now simply treats that function as not a SEH helper.
+
+Both come from the same place: the entry function's real body ends at
+`JMP EAX` (0x008420a4) and Ghidra decodes the padding behind it as code.
+
+What is still open on the 1.19 image, from the third attempt:
+
+- `fn_00841ff8` still fails in the jump-table pass with the same 16-bit
+  operand; the tolerance covers the emit path but not `prepare(strict=True)`.
+  The entry point must translate, so this one is not optional.
+- `fn_00410170` jumps to `0x004103cf`, past the end of its own listing. The
+  listing is truncated and nothing lists the target as a block entry.
+- `fn_007eecc0` calls `0x8f28759a`, which is outside the image: another
+  misdecode, and a call to a literal outside the image should be a trap under
+  the same tolerance rather than a dangling dispatch target.
+
+The dangling-target check that reports the last two is deliberately fatal and
+should stay that way: every direct call and jump must reach translated code.
+
+**Decision.** The alpha-blending work the user asked for is the goal; the 1.19
+bring-up is a separate project of its own size. The port is therefore pinned
+back to the 2021 GOG build, which reaches character creation, and the 1.19
+work stays in history (`622b153`) with `original/patched` and its listings in
+place to resume from.
+

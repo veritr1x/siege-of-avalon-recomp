@@ -10,7 +10,7 @@ KIT = ROOT / "kit"
 # ends at 0x00d06800 and SizeOfImage ends the image at 0x00d07000. Mapped,
 # never referenced by the game. Every unidentified hook and global lives in
 # its last 512 bytes.
-SENTINEL_LOW, SENTINEL_HIGH = 0x00A36E00, 0x00A37000
+SENTINEL_LOW, SENTINEL_HIGH = 0x00D06E00, 0x00D07000
 
 
 def load_module(name):
@@ -32,16 +32,16 @@ class SiegeConfigTests(unittest.TestCase):
     def test_identity(self):
         self.assertEqual(self.cfg["game"]["id"], "siege")
         self.assertEqual(self.cfg["game"]["executable"], "Siege.exe")
-        # The community 1.19 patch's GOG executable, 2025-06-09.
         self.assertEqual(self.cfg["game"]["sha256"],
-                         "645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847")
-        self.assertEqual(self.cfg["game"]["image_base"], 0x00400000)
-        self.assertEqual(self.cfg["game"]["entry_point"], 0x00841FF8)
-        self.assertIn("#define RECOMP_IMAGE_BASE 0x00400000", self.header)
+                         "0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b")
+        # Delphi's link base, not the 0x00400000 of the kit's other games.
+        self.assertEqual(self.cfg["game"]["image_base"], 0x00800000)
+        self.assertEqual(self.cfg["game"]["entry_point"], 0x00BFEA40)
+        self.assertIn("#define RECOMP_IMAGE_BASE 0x00800000", self.header)
         self.assertIn('#define RECOMP_APP_NAME "SiegeOfAvalonRecomp"', self.header)
         self.assertIn('#define RECOMP_EXECUTABLE "Siege.exe"', self.header)
         self.assertIn('#define RECOMP_GUEST_ROOT "C:\\\\GOG Games\\\\Siege of Avalon - Anthology"', self.header)
-        self.assertEqual(self.cfg["developer_exe_path"], (ROOT / "original/patched/Siege.exe").resolve())
+        self.assertEqual(self.cfg["developer_exe_path"], (ROOT / "original/gog/Siege.exe").resolve())
         self.assertEqual(self.cfg["listings_path"], (ROOT / "analysis/decompiled/Siege.exe").resolve())
 
     def test_every_kit_macro_is_rendered(self):
@@ -63,7 +63,7 @@ class SiegeConfigTests(unittest.TestCase):
         self.assertEqual(dfx["key"], "dfx")
         self.assertEqual(dfx["name"], "Dfx_p6s.dll")
         self.assertEqual((dfx["base"], dfx["size"], dfx["function_alignment"]), (0x10000000, 0x28000, 1))
-        self.assertEqual(dfx["path"], (ROOT / "original/patched/Dfx_p6s.dll").resolve())
+        self.assertEqual(dfx["path"], (ROOT / "original/gog/Dfx_p6s.dll").resolve())
         self.assertEqual(dfx["listings_path"], (ROOT / "analysis/decompiled/Dfx_p6s.dll").resolve())
         self.assertIn("#define RECOMP_GUEST_SIZE 0x10100000u", self.header)
         self.assertIn('{"Dfx_p6s.dll", ', self.header)
