@@ -5265,3 +5265,85 @@ chooser listing Fighter, Scout and Magician with Fighter highlighted, training
 points 10, and every stat value drawn (7/7/7/10/10/5/5/5). Zero guest-thunk
 failures in the run, against thousands before.
 
+
+## The black map
+
+**Symptom.** A new character entered the world and the map was black: the
+heads-up display, the portrait and the opening conversation all drew, and
+nothing else did. `Siege.log` ended the load with
+
+```
+Loading diamond resources...
+Reading resource list
+Loader.MainError creating variant or safe array
+Map load complete
+...
+Start Tiles
+End Tiles: 0
+```
+
+The loader abandoned the map at its first resource list and reported a
+complete load of nothing.
+
+**Cause.** `SafeArrayCreate` in the kit refused any array with more than one
+dimension - it tested `cDims == 1` - and allocated a fixed 24-byte header. The
+map loader builds its tile-set table as a two-dimensional variant array, one
+row per resource and thirteen fields per row, so it got a null array back and
+took the failure path. A temporary diagnostic printed the call:
+`SafeArrayCreate(vt=12, dims=2) refused; first bound count=5 lower=0`.
+
+**Fix.** Kit `922678c` makes every SAFEARRAY helper read `cDims`: the header
+is 16 bytes plus one eight-byte bound per dimension, validation multiplies the
+extents, copying reproduces the shape, an element address folds the indices
+left to right so the last dimension varies fastest, and both bound queries
+take any dimension the array has.
+
+**The bound order had to come off the running game.** OLE documents
+`rgsabound` as rightmost-first, and the first implementation followed the
+documentation. The map then loaded its five resources with empty names:
+
+```
+  *** Error: Could not load
+  *** Error: Could not load
+  *** Error: Could not load
+  *** Error: Could not load 10
+  *** Error: Could not load
+```
+
+A trace of the actual calls settled it. The guest creates the array as
+`vt=12 dims=2 b0={5,0} b1={13,0}` and then reads `[0,0] [1,0] [2,0] [3,0]
+[4,0]` - its first index ranges over the bound it passed first, so
+`rgsabound[i]` belongs to the dimension an index list names i'th. Reversing
+them puts the bounds check on the wrong extent, which rejects a legitimate
+index and reads an element nothing wrote.
+
+**Result.** The level loads and draws: `End Tiles: 900`, `End Items: 1516`,
+no resource errors, clean shutdown. `build/wt9-smoke/smoke_world-a_present.ppm`
+shows the keep's floor and walls, the lit torches, the full heads-up display
+and Corvus's opening conversation; `smoke/world3.script` answers him and
+`build/wt10-smoke/smoke_talk-2_present.ppm` shows the conversation two replies
+further on, so clicks, dialogue and the cursor all work in the world.
+
+**A second fix the same run needed.** `Blt` and `BltFast` refused any
+rectangle not wholly inside its surface, so a draw hanging off an edge wrote
+nothing; DirectDraw clips such a blit. Kit `f05a820` clips instead, carrying
+the source rectangle so a stretch keeps its ratio. That is what completed the
+heads-up display.
+
+
+## Open: ESC in the world underflows the guest stack
+
+`smoke/world3.script` ends with an ESCAPE press, and the run dies there:
+
+```
+[host] SIGBUS in guest thread 1: EIP=0096266c ESP=fffffff8 EBP=00000008
+[host] the guest stack pointer is outside the main stack
+```
+
+ESP has wrapped below zero, so the stack was already unbalanced when the
+fault hit. `FUN_00962638` is a Delphi frame that installs two exception
+registrations, calls a method indirectly (`CALL dword ptr [EBX + 0x48]`) and
+then restores the chain at 0x0096266c - the faulting instruction. The same
+function appears in the recursive exception cycle of an earlier crash report,
+so the indirect call, not the key, is the thing to look at. Reproduce with
+`smoke/world3.script`; the same script without its ESCAPE step is the control.
