@@ -4240,3 +4240,115 @@ UTF-16 records rather than C strings.
   `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py >
   build/task14-final-config.log 2>&1`: **8 passed**. Both repository diffs pass
   whitespace checks; the kit worktree is clean at the recorded commit.
+
+- **2026-09-15 — Task 14 resumed: configurable Windows version; MUI startup prerequisite.**
+  **Task 14 remains incomplete.** Kit `0d91c09` adds `[game] windows_version`
+  and consistent GetVersion, GetVersionExA/W and VerifyVersionInfoW answers;
+  `b186ecd` corrects mixed comparison conditions found during final review.
+  This game's setting is `"6.1"`, which defaults to build **7601**, NT platform
+  **2**, and Service Pack 1. The original executable hash remains
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  The configuration accepts `major.minor[.build]`. Omitted configuration
+  stays at `4.10`, build 2222: the legacy packed value remains `0xc0000a04`
+  and the Win9x OSVERSIONINFO build retains its major/minor upper word.
+  Other unspecified builds default to zero, except `6.1` as above. Components
+  are validated against the packed API's byte-sized major/minor and 15-bit
+  NT build. Generated macros are `RECOMP_WINDOWS_MAJOR`, `_MINOR`, `_BUILD`
+  and `_PLATFORM`. Both OSVERSIONINFO layouts and their EX suffixes are
+  tested, including UTF-16 CSD text, service-pack fields, workstation product
+  type, buffer guards and invalid structure sizes. VerifyVersionInfoW now
+  checks requested fields, hierarchical version conditions and suite masks,
+  with errors 87/1150 for invalid requests/version mismatches. Mixed equality
+  and inequality conditions have their own regression. The kit does not serve
+  `ntdll`, so no RtlGetVersion export was added. Comparison semantics were
+  checked against [Microsoft's VerifyVersionInfoW documentation](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-verifyversioninfow).
+
+  **New blocker before video initialization:** reporting major version 6
+  enables Delphi's Vista-era MUI (Multilingual User Interface) startup path.
+  In `functions/0080dcd0.asm`, `0080dce8..0080dcfe` tests GetVersion's major
+  byte against 6. The enabled branch calls GetModuleHandleW for the UTF-16
+  string `kernel32.dll` at `0080dd70`, then resolves:
+
+  | Return site | Export | Stored callback |
+  | --- | --- | --- |
+  | `0080dd15` | GetThreadPreferredUILanguages (4 args) | `00c0dc04` |
+  | `0080dd2f` | SetThreadPreferredUILanguages (3 args) | `00c0dc08` |
+  | `0080dd49` | GetThreadUILanguage (0 args) | `00c0dc0c` |
+
+  All three module queries return zero. Kernel32's reset currently records
+  only the executable in its module-handle map; an imported kernel32 DLL has
+  no handle until LoadLibrary explicitly creates one. The three language
+  exports are also absent from the shim tables, so correcting module lookup
+  alone cannot satisfy this path. The listing at `0080e159` unconditionally
+  calls `[00c0dc0c]`. `0080e104` subsequently needs the four-argument preferred
+  language query, including its size query and UTF-16 multi-string result;
+  merely supplying GetThreadUILanguage would leave another null callback.
+  Providing this MUI contract and imported-module handles is a new kit
+  prerequisite beyond the approved version-identity change and DirectDraw
+  run-report loop. No locale shims or translation rules were changed here.
+
+  **Final run, kit b186ecd:** the smoke host was rebuilt without translator
+  regeneration, using a newly created empty `build/task14-win61-final-profile`.
+  GetVersion returns **`1db10106`**, and GetVersionExW succeeds. The process
+  exits **5** before the startup-form dump, with this trace tail:
+
+  ```text
+  call to unknown target 00000000 (ESP=0effda84, return=0080e15f): returning 0
+  SEH leave: no retired frame at ESP=0effdab4
+  [host] SIGBUS in guest thread 1: EIP=0080e357 ESP=0effdaac EBP=00000000
+  ```
+
+  The listing at `0080e357` restores FS:[0] after the locale helper returns.
+  This trace establishes the unresolved callback before the later fault;
+  it does not establish every register change between them. There are **0**
+  DirectDraw lines, **0** `BitBlt|StretchBlt` lines, **0**
+  `Surface.*::Blt|Flip` lines, **0** D3D11 lines and **0** RtlUnwind lines.
+  The earlier D3D11 constructor-cleanup abort with registration zero is not
+  reached, so this run cannot resolve whether that older failure involved
+  a zero chain head or a null landing record.
+
+  **Acceptance:** no new main-menu PPM or PNG exists. The previous failed
+  video-error captures were preserved under
+  `build/task14-before-win61-captures/` before the final run. The image check
+  exits 1 with `FileNotFoundError: build/smoke/main-menu.png`. No title-screen
+  description can be supplied, and the changelog does not claim menu success.
+  The existing Play click `(584,450)` and supported `800x600x16` mode remain
+  in the script; its comment now records the Windows 6.1 selection. The
+  startup PNG skin transparency and missing settings-value text remain
+  deferred until a menu frame exists (AlphaBlend premultiplied input and
+  32-bpp CreateDIBSection/StretchDIBits are the previously identified leads).
+
+  **Validation, from the game root (macOS only):**
+
+  ```sh
+  .venv/bin/python -m pytest -q --import-mode=importlib kit/tests/test_game_config.py tests/test_game_config.py > build/task14-version-config-red.log 2>&1
+  .venv/bin/python -m pytest -q --import-mode=importlib kit/tests/test_game_config.py tests/test_game_config.py > build/task14-version-config-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-version-runtime-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-version-runtime-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-version-mixed-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-version-mixed-green.log 2>&1
+  .venv/bin/python -m pytest -q --import-mode=importlib tests kit/tests/test_game_config.py kit/tests/test_game_literals.py > build/task14-version-final-config.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-win61-final-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/run-smoke.log 2>&1
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); n = len(set(im.getdata())); print(im.size, n); assert im.size == (800, 600) and n > 1000" > build/task14-version-final-acceptance.log 2>&1
+  ```
+
+  Config red: **3 failed, 18 passed**; green: **21 passed**. The first
+  combined pytest invocation hit duplicate module basenames; using
+  `--import-mode=importlib` allowed both suites to collect and reproduce the
+  intended failures. Runtime red: **1000 checks, 16 failures, 1 skipped**;
+  green: **1002 checks, 0 failures, 1 skipped**. Mixed-condition red:
+  **1017 checks, 2 failures, 1 skipped**; green: **1017 checks, 0 failures,
+  1 skipped**. The skip is the existing image-with-no-data-imports case.
+  Final config/literal checks: **24 passed**. Native suites use the existing
+  approved `build/task-k1-native.py` selector because the root test wrapper
+  lacks `-R`. The smoke build exits **0**, with the existing linker alignment
+  warning. The first smoke probe (`build/task14-win61-smoke.log`) and the final
+  run both exit **5** at the same locale initialization fault.
+
+  Before each kit commit, `.venv/bin/python kit/tools/format.py --write`
+  formatted **272 handwritten source files**; the kit's
+  `tools/check_repo.py`, `tools/check_game_literals.py` and staged whitespace
+  checks passed. No push, executable change, generated-source edit, private
+  input commit, player-save change or game literal in kit runtime code occurred.

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 14: the game now reports Windows 6.1 SP1 (build 7601) to select
+  system DirectDraw, using the kit's per-game Windows version setting
+  (`siege-delphi` b186ecd). The smoke run stops earlier in Delphi's newly
+  enabled MUI language initialization: kernel32 module lookup and three
+  thread UI-language exports are missing. No main-menu frame is produced.
+
 - Task 14: Media Foundation session failure now follows the game's no-video
   path, System32 directory queries use the expected guest path, and direct
   callees survive false scan boundaries (kit `siege-delphi` 55d982e). Video

@@ -57,6 +57,11 @@ class SiegeConfigTests(unittest.TestCase):
     def test_delphi_function_alignment(self):
         self.assertEqual(self.cfg["translate"]["function_alignment"], 4)
 
+    def test_windows_version_selects_system_directdraw(self):
+        self.assertEqual(self.cfg["game"]["windows_version"], "6.1")
+        for field, value in (("MAJOR", 6), ("MINOR", 1), ("BUILD", 7601), ("PLATFORM", 2)):
+            self.assertIn("#define RECOMP_WINDOWS_%s %du" % (field, value), self.header)
+
     def test_unidentified_addresses_stay_in_the_sentinel_padding(self):
         """Until a hook is found, it must point where the game never looks."""
         addresses = [self.cfg["translate"]["animation_counter"]]

@@ -28,6 +28,8 @@ guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 # tools/setup.py links your installation here; an innoextract of the GOG
 # installer placed here directly is accepted too.
 developer_exe = "original/gog/Siege.exe"
+# The game selects system DirectDraw on Windows 6.1 (default build 7601).
+windows_version = "6.1"
 
 [translate]
 # Listed-start histogram peaks at mod-16 offsets 0, 4, 8, 12: Delphi uses 4-byte alignment.

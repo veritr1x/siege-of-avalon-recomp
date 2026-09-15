@@ -3,6 +3,7 @@
 # Play is at form client (460,353); the checkmark toggles fullscreen.
 # Use a fresh smoke-only profile. Unsupported media-session creation now
 # follows the game's own no-video path; no ShowIntro override is needed.
+# game.toml reports Windows 6.1 to select the system DirectDraw module.
 #   mkdir -p build/task14-menu-profile build/smoke
 # dump writes smoke_<name>_present.ppm in the dump directory.
 #   RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke \
