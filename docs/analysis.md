@@ -4352,3 +4352,193 @@ UTF-16 records rather than C strings.
   `tools/check_repo.py`, `tools/check_game_literals.py` and staged whitespace
   checks passed. No push, executable change, generated-source edit, private
   input commit, player-save change or game literal in kit runtime code occurred.
+
+- **2026-09-15 — Task 14 resumed: VCL platform probes pass; system DirectDraw is reached.**
+  **Task 14 remains incomplete.** The final smoke run creates a DirectDraw
+  object and sets its cooperative level, then aborts during constructor
+  cleanup of a missing D3D11 delay-load dependency. No main-menu frame exists.
+  No SEH control-flow, translator, D3D11 renderer or presentation-model change
+  was made in this continuation; the SEH failure reaches the orchestrator's
+  explicit design boundary.
+
+  **Kit changes, each with a failing regression followed by a passing run:**
+
+  | Commit | Change |
+  | --- | --- |
+  | `fe11d9b` | GetModuleHandleA/W materializes pseudo handles for registered DLLs through the LoadLibrary path. Kernel32, user32 and gdi32 handles are nonzero and stable before explicit loads; GetProcAddress resolves their registered shims. |
+  | `65e4c7f` | GetThreadUILanguage returns `0409`; thread/user/system preferred UI language queries return the en-US or `0409` UTF-16 multi-string. Size queries, exact-fit buffers, double terminators, short buffers and invalid arguments are covered. The thread preference setter reports one installed language. |
+  | `58d1c11` | GetNativeSystemInfo uses the existing 32-bit guest SYSTEM_INFO implementation, with matching fields and output guards. |
+  | `d80eecc` | WTS session-notification registration and cleanup exports report an unavailable service with FALSE and `RPC_S_INVALID_BINDING` (1702). |
+  | `9d36ff8` | BufferedPaintInit is available and returns E_NOTIMPL; BufferedPaintUnInit returns S_OK. The VCL can continue with ordinary GDI painting. |
+  | `ee2e962` | IsThemeActive/IsAppThemed return FALSE; DwmIsCompositionEnabled succeeds with a FALSE output, and DwmExtendFrameIntoClientArea reports E_NOTIMPL. |
+  | `62636cd` | DirectDrawCreateEx resolves with the four-argument ABI and refuses IDirectDraw7 with DDERR_UNSUPPORTED. A regression then creates a legacy object, queries IDirectDraw4 and sets its cooperative level successfully. |
+
+  The native-system, WTS, buffered-paint and DWM exports were additional
+  VCL prerequisites exposed after enabling Windows 6.1. The WTS/uxtheme/dwmapi
+  changes extend the named core-DLL list to these observed platform probes;
+  they report unavailable services through their normal return values and
+  do not add a compositor or a renderer. Contracts were checked against
+  Microsoft's [GetNativeSystemInfo](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getnativesysteminfo),
+  [preferred UI languages](https://learn.microsoft.com/en-us/windows/win32/api/winnls/nf-winnls-getthreadpreferreduilanguages),
+  [WTS registration](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsregistersessionnotification),
+  [buffered-paint initialization](https://learn.microsoft.com/en-us/windows/win32/api/uxtheme/nf-uxtheme-bufferedpaintinit)
+  and [composition query](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmiscompositionenabled)
+  documentation. DirectDrawCreateEx is a discoverable unsupported-version
+  probe rather than a literal alias: the [documented factory](https://learn.microsoft.com/en-us/windows/win32/api/ddraw/nf-ddraw-directdrawcreateex)
+  accepts only IID_IDirectDraw7. Other IIDs return DDERR_INVALIDPARAMS; the
+  supported older interfaces remain available through DirectDrawCreate and
+  QueryInterface. Returning an older vtable for version 7 would be incorrect.
+
+  **Run progression:** MUI succeeds, then the first probe stops on missing
+  GetNativeSystemInfo (`build/task14-mui-smoke.log`, exit 6). Subsequent probes
+  expose WTS (`task14-native-system-smoke.log`, exit 6), BufferedPaintInit
+  (`task14-session-service-smoke.log`, exit 6), then dwmapi
+  (`task14-buffered-paint-smoke.log`). The dwmapi probe repeatedly displayed
+  a delay-load exception; that owned smoke process was stopped with SIGTERM
+  (exit 143). With the composition probes served,
+  `task14-composition-smoke.log` reaches DirectDraw and exits 6 at the SEH
+  failure below. All logs remain ignored under `build/`. Each probe used
+  a new, empty smoke profile; no player profile or ShowIntro override was used.
+
+  **Final run, kit 62636cd:** `build/run-smoke.log`, exit **6**, after a fresh
+  smoke build with exit **0**. GetSystemDirectoryW returns 19 characters,
+  and LoadLibrary("ddraw.dll") returns pseudo module `600c0000`.
+  DirectDrawCreate returns S_OK at `00b0f212`; QueryInterface returns S_OK
+  at `00b0f2b2`; SetCooperativeLevel returns S_OK at `00b0f321`, with window
+  `0002002c` and flags `8` (normal cooperative mode). The IID passed at
+  `00b0f2a5` is stored at `00b0f9f8`: the pinned PE contains
+  `6c14db80-a733-11ce-a521-0020af0be560`, the original IDirectDraw interface.
+  This run does not request version 7 or version 4. DirectDrawCreateEx is no
+  longer unresolved but is not called before the abort, so its version 7
+  refusal/fallback is unit-tested, not observed in this game run.
+
+  The log has **24** lines matching `BitBlt|StretchBlt`, **0** matching
+  `Surface.*::Blt|Flip`, and **0** DirectDraw CreateSurface lines. These GDI
+  calls belong to startup painting; no DirectDraw menu surface is created.
+  The compositor rule cannot yet be evaluated. Optional unresolved probes
+  remain in the import log, but none is a newly consumed core-Win32 null
+  callback immediately before the final abort. The one earlier null call
+  returns at `00a39395` in the existing Galaxy initialization path.
+
+  **SEH boundary and debugger evidence:** after cooperative-level setup,
+  the constructor at `00a23cfc` establishes registration `0efff9fc` via
+  the call at `00a23d09`, with handler `0080953d`. Its inner routine
+  establishes `0efff948` at `00a235fc`, handler `00a23995`.
+  LoadLibrary("d3d11.dll") fails with error 126 and RaiseException raises
+  `c06d007e` from the delay-load helper. The trace ends:
+
+  ```text
+  SEH handler: registration=0efff948 handler=00a23995 flags=00000000
+  SEH handler: registration=0efff9fc handler=0080953d flags=00000000
+  SEH handler: registration=0efff948 handler=00a23995 flags=00000002
+  RtlUnwind: registration=0efff9fc target_ip=0080a100 retval=00000000
+  SEH intercept: pending=0efff9fc EIP=0080a12a ESP=0efff848 live=11
+  SEH live: registration=0efff9fc established=00a23d09
+  SEH live: registration=0efff948 established=00a235fc
+  SEH: registration outside guest stack (registration=00b0ed6c target=00000000 FS=0fe00000 ESP=0efff880)
+  [host] an abort from the runtime in guest thread 1: EIP=008118ec ESP=0efff880 EBP=0efff8f8
+  ```
+
+  Two read-only LLDB reproductions stopped at `invalid_chain`; their owned
+  processes were killed after inspection. `build/task14-seh-inspect.log`
+  and `build/task14-seh-chain.log` establish that **FS:[0] is `0efff9fc`,
+  not zero**, with stack bounds `0ef00000..0f000000`. At the abort the words
+  starting at registration `0efff9fc` are:
+
+  ```text
+  00b0ed6c 0080a477 0efffa18 01998c08
+  ```
+
+  The registration's next-link word is therefore a code address. The PE
+  bytes at `00b0ed6c` begin `PUSH EBP; MOV EBP,ESP; ADD ESP,-10c`.
+  The dispatch walk has visited exactly two registrations (`0efff948`,
+  `0efff9fc`) and then attempts to validate `00b0ed6c`. Its host backtrace
+  remains inside the original RaiseException dispatch. The checkpoint was
+  live at interception; this is neither a missing checkpoint nor a null
+  chain head. These observations locate the damaged chain link, but do not
+  establish which guest/host cleanup transition first overwrites it.
+  Repairing that constructor re-raise/dispatch contract requires a further
+  SEH decision. No shim pretending to implement D3D11 was added to bypass it.
+
+  **Acceptance and drawing defects:** the only new final-run dump is
+  `build/smoke/smoke_startup-form_present.ppm`, converted to
+  `build/smoke/task14-ui-startup.png`. It is **800x600 with 131 distinct
+  colours**: a black background around a solid magenta settings rectangle,
+  sparse version text and a small checkmark. It is not a title screen or
+  menu. `smoke_main-menu_present.ppm`, `main-menu.ppm` and `main-menu.png`
+  are absent; the requested acceptance check exits **1** with
+  `FileNotFoundError: build/smoke/main-menu.png`. The changelog records the
+  blocker instead of the unearned statement that the main menu draws.
+  Startup PNG skin transparency and missing settings-value text remain
+  deferred until a menu frame exists: guest TPngImage decoding, AlphaBlend's
+  premultiplied path and 32-bpp CreateDIBSection/StretchDIBits remain the
+  investigation leads. No menu font conclusion can yet be drawn.
+
+  **Validation commands, from the game root, macOS only:**
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-module-handle-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-module-handle-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-mui-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-mui-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-native-system-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-native-system-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-session-service-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-session-service-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-buffered-paint-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-buffered-paint-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-composition-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-composition-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-ddraw-ex-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-ddraw-ex-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-ui-final-seh.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-ui-final-config.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  ```
+
+  | Regression | Red tail (checks / failures / skips) | Green tail |
+  | --- | --- | --- |
+  | Module handles | 1032 / 9 / 1 | 1032 / 0 / 1 |
+  | MUI | 1106 / 71 / 1 | 1069 / 0 / 1 |
+  | Native system info | 1071 / 2 / 1 | 1070 / 0 / 1 |
+  | WTS | 1077 / 7 / 1 | 1075 / 0 / 1 |
+  | Buffered paint | 1081 / 5 / 1 | 1079 / 0 / 1 |
+  | Theme/composition | 1089 / 10 / 1 | 1086 / 0 / 1 |
+  | DirectDrawCreateEx | 138823 / 1 / 0 | 138855 / 0 / 0 |
+
+  Red commands exit 1; green commands exit 0. Some red counts are higher
+  because unresolved trampolines also fail the common dispatch assertions.
+  Runtime's one skip is the existing image-with-no-data-imports case.
+  Final SEH: **205 checks, 0 failures**; config/game-literal pytest:
+  **9 passed**. The passing synthetic SEH suite does not cover the damaged
+  constructor chain observed above. The native selector remains necessary
+  because the root test wrapper does not accept `-R`.
+
+  The final smoke command used a 90-second subprocess limit; it aborted
+  normally through the host's signal handling before that limit:
+
+  ```sh
+  mkdir -p build/task14-ui-final-profile build/smoke
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-ui-final-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 .venv/bin/python - <<'PY' > build/run-smoke.log 2>&1
+  import subprocess,sys
+  try:
+      result = subprocess.run(['build/recomp/pop_smoke'], timeout=90)
+      sys.exit(result.returncode if result.returncode >= 0 else 128-result.returncode)
+  except subprocess.TimeoutExpired:
+      print('Smoke stopped after 90 seconds', flush=True)
+      sys.exit(124)
+  PY
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/smoke_startup-form_present.ppm build/smoke/task14-ui-startup.png
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); n = len(set(im.getdata())); print(im.size, n); assert im.size == (800, 600) and n > 1000" > build/task14-ui-final-acceptance.log 2>&1
+  ```
+
+  The script retains Play at `(584,450)` and the supported `800x600x16`
+  override; the plan's mode list containing 32 bpp is still rejected by the
+  existing parser. Before every kit commit, the formatter processed **272
+  handwritten source files**, `check_repo.py` reported **Tracked source
+  boundaries and local documentation links passed**, and
+  `check_game_literals.py` plus staged whitespace checks passed. Incremental
+  smoke builds needed no translator regeneration and retained the existing
+  linker common-section alignment warning. The pinned executable, game
+  configuration and player saves were unchanged. No private inputs, generated
+  code, binaries or logs were committed, and nothing was pushed.

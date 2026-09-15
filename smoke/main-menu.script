@@ -6,6 +6,8 @@
 # game.toml reports Windows 6.1 to select the system DirectDraw module.
 #   mkdir -p build/task14-menu-profile build/smoke
 # dump writes smoke_<name>_present.ppm in the dump directory.
+# A startup-form dump alone is not menu acceptance; initialization must reach
+# the second dump without a runtime abort. Use RECOMP_LOG=2 for the SEH trace.
 #   RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke \
 #   RECOMP_PROFILE_DIR=$PWD/build/task14-menu-profile \
 #   RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke

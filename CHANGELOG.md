@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Task 14: imported-module handles, MUI language queries and VCL platform
+  probes now allow startup to reach system DirectDraw (kit `siege-delphi`
+  62636cd). DirectDraw creation and cooperative-level setup succeed, but a
+  D3D11 delay-load exception exposes an invalid SEH chain link during
+  constructor cleanup. No main-menu frame is produced; startup skin
+  transparency and settings text remain open.
+
 - Task 14: the game now reports Windows 6.1 SP1 (build 7601) to select
   system DirectDraw, using the kit's per-game Windows version setting
   (`siege-delphi` b186ecd). The smoke run stops earlier in Delphi's newly
