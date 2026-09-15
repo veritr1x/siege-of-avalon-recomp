@@ -87,6 +87,34 @@ static inline uint32_t dxr_channel_put(uint32_t surface, uint32_t index, uint32_
     return (((value * top + 127u) / 255u) << rshift) & mask;
 }
 
+// A channel descriptor read once per blit. The per-pixel helpers above read
+// mask, bit count and shift out of guest memory on every call - three reads
+// per channel, three channels, twice for source and destination - which put
+// dozens of guest reads and three divisions behind each blended pixel. The
+// arithmetic below is theirs exactly; only where the descriptor comes from
+// changes.
+typedef struct {
+    uint32_t mask, rshift, top;
+} DxrChannel;
+static inline void dxr_channel_load(uint32_t surface, uint32_t index, DxrChannel *out) {
+    const uint32_t ch = surface + DXR_SURF_CHANNELS + index * DXR_CHANNEL_STRIDE;
+    const uint32_t mask = rd32(ch + DXR_CHANNEL_MASK);
+    const uint32_t bits = rd32(ch + DXR_CHANNEL_BITCOUNT);
+    const int live = mask != 0 && bits != 0;
+    out->mask = live ? mask : 0u;
+    out->rshift = live ? rd32(ch + DXR_CHANNEL_RSHIFT) : 0u;
+    out->top = live ? (1u << bits) - 1u : 0u;
+}
+static inline uint32_t dxr_ch_get(const DxrChannel *c, uint32_t pixel) {
+    if (!c->mask || !c->top)
+        return 0u;
+    return ((pixel & c->mask) >> c->rshift) * 255u / c->top;
+}
+static inline uint32_t dxr_ch_put(const DxrChannel *c, uint32_t value) {
+    if (!c->mask)
+        return 0u;
+    return (((value * c->top + 127u) / 255u) << c->rshift) & c->mask;
+}
 // The blit itself, in guest memory. Source and destination are guest
 // addresses of TDXR_Surface records; the rectangles are guest TRects.
 //
@@ -135,6 +163,11 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
 
     const uint32_t a = alpha < 0 ? 0u : (alpha > 255 ? 255u : (uint32_t)alpha);
     const int straight = blend != DXR_BLEND_SRCALPHA1_ADD_INVSRCALPHA2 || a >= 255;
+    DxrChannel src_ch[3], dst_ch[3];
+    for (uint32_t ch = 0; ch < 3; ++ch) {
+        dxr_channel_load(src, ch, &src_ch[ch]);
+        dxr_channel_load(dst, ch, &dst_ch[ch]);
+    }
     int64_t sy = sy0;
     for (int32_t y = dt; y < db; ++y, sy += inc_y) {
         const int32_t syi = (int32_t)(sy >> 16);
@@ -159,9 +192,9 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
             const uint32_t d = rd16(dp);
             uint32_t out = 0;
             for (uint32_t ch = 0; ch < 3; ++ch) {
-                const uint32_t cs = dxr_channel_get(src, ch, s);
-                const uint32_t cd = dxr_channel_get(dst, ch, d);
-                out |= dxr_channel_put(dst, ch, (cs * a + cd * (255u - a) + 127u) / 255u);
+                const uint32_t cs = dxr_ch_get(&src_ch[ch], s);
+                const uint32_t cd = dxr_ch_get(&dst_ch[ch], d);
+                out |= dxr_ch_put(&dst_ch[ch], (cs * a + cd * (255u - a) + 127u) / 255u);
             }
             wr16(dp, (uint16_t)out);
         }
