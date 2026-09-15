@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Task 14: Media Foundation session failure now follows the game's no-video
+  path, System32 directory queries use the expected guest path, and direct
+  callees survive false scan boundaries (kit `siege-delphi` 55d982e). Video
+  initialization is reached, but the selected DirectDraw wrapper is unserved;
+  the capture shows a video-subsystem error, not the main menu. A later
+  D3D11 delay-load exception exposes another constructor-cleanup failure.
+
 - Task 14: cleanup landings now keep exception dispatchers live and return
   through callback checkpoints (kit `siege-delphi` 5521cc7). The movie error
   recovers without corrupting the guest stack. The smoke profile uses the

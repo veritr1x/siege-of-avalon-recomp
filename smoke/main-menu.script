@@ -1,10 +1,9 @@
 # From process start through the startup settings form to the main menu.
 # Coordinates are guest pixels read from the 800x600 startup-form dump.
 # Play is at form client (460,353); the checkmark toggles fullscreen.
-# The game's MFStartup failure aborts form startup. Use its ShowIntro setting
-# in a fresh smoke-only profile to reach graphics initialization instead.
+# Use a fresh smoke-only profile. Unsupported media-session creation now
+# follows the game's own no-video path; no ShowIntro override is needed.
 #   mkdir -p build/task14-menu-profile build/smoke
-#   .venv/bin/python -c "from pathlib import Path; (Path('build/task14-menu-profile') / 'siege.ini').open('x').write('[Settings]\nShowIntro=false\n')"
 # dump writes smoke_<name>_present.ppm in the dump directory.
 #   RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke \
 #   RECOMP_PROFILE_DIR=$PWD/build/task14-menu-profile \

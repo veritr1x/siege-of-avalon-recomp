@@ -4064,3 +4064,179 @@ UTF-16 records rather than C strings.
 
   Final config verification: `.venv/bin/python -m pytest -q tests >
   build/task14-sync-final-config.log 2>&1`: **5 passed in 0.01s**.
+
+- **2026-09-15 — Task 14 resumed: recover direct callees and take the no-video path.**
+
+  Kit commits in this resumption: `d831dae` (System32 directory), `3283b81`
+  (Media Foundation failure at object creation), and `55d982e` (direct-callee
+  discovery before weaker scan boundaries). The pinned executable's SHA-256
+  was rechecked and remains
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  **Correction to decision A, from the pinned PE:** the UnicodeString header
+  is at `00bd61d4`, its text `Main.FormShow` starts at `00bd61e0`, and
+  `00bd61fc` is code (`55 8b ec b9 33 00 00 00`, followed by the zero-local
+  allocation loop). `00bd6218` is inside the pushed handler address, not a
+  function prologue. The dynamic dispatcher at `00809298..008092b8` calls
+  `008091f0`, whose listing reads the VMT dynamic table at offset `-0x3c`:
+  a word count, word message IDs, then dword method addresses. For VMT
+  `00bd1f44`, table `00bd2f9a` has 17 entries. Message `0x8015` uses slot
+  `00bd2ff2`, containing `00bd61fc`. A Unicorn probe running the original x86
+  dispatcher with that VMT and message reproduces the exact target. There
+  is no shifted string pointer in this lookup. An LLDB trace attempt stalled
+  at process launch; its owned debugger and child were terminated. The
+  original-instruction probe is offline evidence, not a live register capture.
+
+  The translation report's `data` field is discovery provenance, not a verdict
+  that the target bytes are data. The actual withdrawal chain was
+  `00bd61fc -> 00bde304 -> 00a8e4ac`. An ignored discovery diagnostic found
+  that `00a8e4ac` decodes cleanly to 243 instructions, but a raw scan candidate
+  at `00a8e900` cuts through the `MOV EAX,[00c0a6bc]` at `00a8e8fd`. The
+  truncated 239-instruction candidate fails the termination check, which
+  removes its callers. The fix follows direct CALLs from validated,
+  relocation-named candidates before admitting weaker scan boundaries. These
+  callees remain speculative: invalid call graphs still withdraw. No address
+  seed, generated-source edit, or pruning bypass was added.
+
+  **Decision B:** GetSystemDirectoryW already used `gm_put_wstr` and counted
+  UTF-16 characters correctly, but both A and W exports returned the old
+  `C:\WINDOWS\SYSTEM` path. They now return `C:\Windows\System32`: 19
+  characters excluding NUL, or 20 required units including NUL. Tests cover
+  exact fit, termination, an untouched guard, a short buffer, and size queries.
+
+  This fixes the requested path contract but is not the cause of this run's
+  `.dll` lookup. That load occurs at `00a1b65b`, followed by a lookup for
+  `DirectXSetupA`, after the DirectXDrivers uninstall registry key is missing.
+  No GetSystemDirectoryW call occurs in the pre-regeneration smoke run. At
+  `00bdae25..00bdae5e`, the game selects system `ddraw.dll` only for OS version
+  **6.1**; all other versions select `soaddraw.dll`. GetVersion/GetVersionExA/W
+  deliberately report Windows 98 SE (4.10) in the kit, with existing regression
+  coverage. The installed `SoADDraw.dll` contains x86 wrapper code, not PE
+  export forwarders. The kit reports that module unavailable because it has
+  no shim table for it. Changing the shared OS-version contract or adding
+  configurable wrapper-module routing needs a separate decision.
+
+  **Decision C, verified in the smoke trace:** MFStartup now returns S_OK;
+  MFCreateMediaSession is the first unsupported operation, returning
+  E_NOTIMPL with a null interface output. In the guest, `00bc377d` detects
+  the failed factory result. Playback reaches `00bc4308` and raises an abort
+  exception, which its own except block at `00bc431c` catches. That block
+  preserves the HRESULT in EBX, posts message `0x8001` at `00bc433c`, and
+  ends the exception at `00bc4341` through `0080a480`. It does not re-raise.
+  The epilogue at `00bc4383` returns the HRESULT. The intro caller takes
+  `00bd60e3`, frees the player, and posts `0x8014` at `00bd610a`, the same
+  initialization message sent when the intro is disabled. The fresh default
+  profile in `build/task14-abc-profile` reaches graphics initialization with
+  **no ShowIntro override**. The smoke script's comments now describe this
+  route. Existing player profiles and installed assets were not changed.
+
+  Before regeneration, `build/task14-abc-run.log` records MFStartup returning
+  `00000000`, MFCreateMediaSession returning `80004001`, and both guest
+  PostMessageW calls succeeding. It then exits **6** at the old missing
+  `00bd61fc` entry. Counts are **32** for `BitBlt|StretchBlt`, **0** for
+  `Surface.*::Blt|Flip`, and **0** DirectDraw import calls. The current startup
+  capture is 800x600 and shows the gold title and settings labels over a solid
+  magenta skin, absent settings values, and a visible Play control. This is
+  the settings form, not a main-menu acceptance image. Guest TPngImage skin
+  transparency, AlphaBlend's premultiplied path, 32-bpp DIB handling, and
+  settings-value text remain deferred until a menu frame exists.
+
+  Tests and build commands used so far, from the game root:
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-system32-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-system32-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-mf-platform-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-mf-platform-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py -k relocated_method_callee > build/task14-callee-red.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_driver.py kit/tools/recomp/tests/test_translate_seh.py kit/tools/recomp/tests/test_translate_insns.py > build/task14-callee-green.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-abc-config.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/task14-abc-smoke-build.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-abc-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/task14-abc-smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/task14-abc-run.log 2>&1
+  .venv/bin/python tools/build.py --regenerate --target smoke --jobs 8 > build/task14-callee-regenerate.log 2>&1
+  ```
+
+  Runtime red results: **946 checks, 5 failures, 1 skipped** for System32,
+  then **946 checks, 1 failure, 1 skipped** for MFStartup. Both green runs:
+  **946 checks, 0 failures, 1 skipped** (the existing imported-data prerequisite).
+  The translator regression first reports **1 failed, 135 deselected**.
+  Its first full driver run exposed an older source-text assertion stopping
+  at a nested closing brace in the sentinel-return helper added by the prior
+  SEH commit; extracting through the function's closing brace fixes that test.
+  Final combined translator suites: **209 passed in 1.94s**. Game config and
+  literal checks: **8 passed in 0.06s**. Before each kit commit, formatting
+  covered **271 handwritten source files**; game-literal, source-boundary,
+  documentation-link and staged-whitespace checks passed. Native suites use
+  the existing ignored selector because the root wrapper has no `-R` option.
+
+  **Final regeneration and reproduction:** the regeneration/build exits **0**.
+  Translation takes **481.4 seconds**, retains **42,629 entry points**, and
+  withdraws 94 speculative bodies. The report and generated declarations now
+  retain `00bd61fc` (1817 instructions), `00bde304` (525), and `00a8e4ac`
+  (243); the false `00a8e900` candidate is absent. In the fresh-profile run,
+  `SEH enter ... established=00bd621d` confirms that the formerly missing
+  method executes. There are **0 missing-block errors**. It loads the item,
+  cross-reference, title, and interface text databases, then reaches video
+  initialization at `00bd79de -> 00b0f080`.
+
+  **Remaining blockers and failed acceptance:** the game shows an error form
+  saying, “Could not initialize video subsystem. Please make sure that you
+  have the latest video driver update installed.” The dump was produced before
+  the later abort and normalized to `build/smoke/main-menu.ppm` and `.png`.
+  Visual inspection shows a black 800x600 frame with a small white text
+  rectangle containing that error; no title screen or menu items are present.
+  The requested image-count command prints **`(800, 600) 2`**, and the explicit
+  acceptance assertion exits **1**. This is a failed diagnostic capture.
+  **Task 14 remains incomplete; the main menu does not draw.**
+
+  `build/run-smoke.log` has **32** `BitBlt|StretchBlt` lines, **0**
+  `Surface.*::Blt|Flip` lines, **0 DirectDraw import calls**, and **0**
+  GetSystemDirectoryW calls. The kit still cannot serve the game's selected
+  `soaddraw.dll`; the Windows-6.1-only system DirectDraw route is not taken.
+  Therefore no failing DirectDraw device/surface method has been reached to
+  implement under Step 3, and no DirectDraw or GDI code changed here. The
+  unresolved wrapper selection needs a scoped OS-version or module-routing
+  decision; changing the shared Windows 98 contract unconditionally would
+  alter the kit's existing behavior for other ports.
+
+  After the script ends, the guest posts quit messages while leaving its error
+  dialogs and attempts to delay-load `d3d11.dll` in the constructor entered at
+  `00a23d09`, through the frame at `00a235fc`. That module is unavailable. The
+  exception reaches RtlUnwind and the constructor checkpoint, then aborts with:
+
+  ```text
+  SEH: registration outside guest stack (registration=00000000 target=00000000 FS=0fe00000 ESP=0efff85c)
+  [host] an abort from the runtime in guest thread 1: EIP=008118ec ESP=0efff85c EBP=0efff8d4
+  ```
+
+  Host exit is **6**. This additional delay-load/constructor-cleanup failure is
+  recorded separately from the earlier video-initialization error; its zero
+  registration is not diagnosed by this resumption. Adding D3D11 support or
+  revising the SEH landing contract again is outside the three approved fixes.
+  Work stops at these blockers without claiming acceptance.
+
+  Final commands and results:
+
+  ```sh
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-final-menu-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/run-smoke.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-callee-seh.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-final-runtime.log 2>&1
+  cp build/smoke/smoke_main-menu_present.ppm build/smoke/main-menu.ppm
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/main-menu.ppm build/smoke/main-menu.png
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); print(im.size, len(set(im.getdata())))" > build/task14-final-acceptance.log 2>&1
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); n = len(set(im.getdata())); print(im.size, n); assert im.size == (800, 600) and n > 1000, 'Task 14 image acceptance failed'" > build/task14-final-acceptance-assert.log 2>&1
+  ```
+
+  Both native suites exit 0: **seh_tests: 205 checks, 0 failures**;
+  **runtime_tests: 946 checks, 0 failures, 1 skipped**. The new smoke profile
+  directory was created empty, and all three main-menu artifact names were
+  absent before this run. The mode list remains the supported `800x600x16`;
+  the kit rejects the plan's list containing 32 bpp. Build warnings are the
+  existing C-linkage host-header warnings and the common-section alignment
+  warning. Validation is macOS only. No push, private-input commit, executable
+  modification, player-save edit, or game address in kit runtime code occurred.
+
+  Final game-config/literal verification:
+  `.venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py >
+  build/task14-final-config.log 2>&1`: **8 passed**. Both repository diffs pass
+  whitespace checks; the kit worktree is clean at the recorded commit.
