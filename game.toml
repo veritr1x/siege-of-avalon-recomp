@@ -55,6 +55,9 @@ function_alignment = 4
 listings = "analysis/decompiled/Siege.exe-1.19"
 # Curated symbols, relative to this directory.
 globals = "globals.toml"
+# Native replacements for translated functions: the software blend the game
+# compiles at run time, which translated code cannot execute.
+overrides = "native/dxr_blend.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
 animation_counter = 0x00a36e00
@@ -72,7 +75,13 @@ volatile_reads = []
 # heuristic and most are plainly misdecoded ("ADD AL,0x8B; SALC"); an address
 # that fixes nothing is not free, because naming an entry moves the
 # boundaries discovery settles on.
-entry_points = [0x00412250]
+# 0x00664a28 is a real function - PUSH EBP; MOV EBP,ESP; MOV ECX,0x3e - in a
+# gap, reached through a data pointer when a new game leaves character
+# creation. Discovery recovered it, cut it short of its own forward jump to
+# 0x00667242, took that jump for a dispatch that went nowhere and withdrew
+# the block; the call then returned zero into a JMP EAX trampoline. Named as
+# an entry it is decoded whole.
+entry_points = [0x00412250, 0x00664a28]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the

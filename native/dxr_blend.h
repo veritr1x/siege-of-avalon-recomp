@@ -26,25 +26,32 @@ static inline int dxr_in_arena(uint32_t at, uint32_t n) {
 // the routine at 0x00a321c0 reads Width at +1 and Height at +5, which is what
 // fixed these numbers. Reading them off the source's field order alone gives
 // a layout four bytes out and a blit that draws nothing.
+// Field offsets of TDXR_Surface in the community 1.19 patch, where the record
+// is a plain Delphi record: a one-byte ColorType padded to four, then the
+// DWORD fields on their natural alignment. The 2021 GOG build declared it
+// packed, so every offset below was three smaller there - Width at 1, Height
+// at 5, BitCount at 0x21, Bits at 0x25, Pitch at 0x29, the channels at 0x35.
+// dxrMakeRGBSurface writes the fields in order and shows which layout an
+// image has: 0x00a28fd4 (2021) writes +0x1..+0x2d, 0x00643e60 (1.19) +0x4..+0x30.
 enum {
     DXR_SURF_COLORTYPE = 0,  // 1 byte
-    DXR_SURF_WIDTH = 1,
-    DXR_SURF_HEIGHT = 5,
-    DXR_SURF_WIDTHBIT = 9,
-    DXR_SURF_HEIGHTBIT = 13,
-    DXR_SURF_WIDTH2 = 17,
-    DXR_SURF_HEIGHT2 = 21,
-    DXR_SURF_WIDTHMASK = 25,
-    DXR_SURF_HEIGHTMASK = 29,
-    DXR_SURF_BITCOUNT = 33,
-    DXR_SURF_BITS = 37,
-    DXR_SURF_PITCH = 41,
-    DXR_SURF_PITCHBIT = 45,
-    DXR_SURF_MIPMAP = 49,
+    DXR_SURF_WIDTH = 4,
+    DXR_SURF_HEIGHT = 8,
+    DXR_SURF_WIDTHBIT = 12,
+    DXR_SURF_HEIGHTBIT = 16,
+    DXR_SURF_WIDTH2 = 20,
+    DXR_SURF_HEIGHT2 = 24,
+    DXR_SURF_WIDTHMASK = 28,
+    DXR_SURF_HEIGHTMASK = 32,
+    DXR_SURF_BITCOUNT = 36,
+    DXR_SURF_BITS = 40,
+    DXR_SURF_PITCH = 44,
+    DXR_SURF_PITCHBIT = 48,
+    DXR_SURF_MIPMAP = 52,
     // The variant part. Indexed surfaces start with an index channel; RGB
     // ones start with red. Each TDXR_ColorChannel is {Mask, BitCount, rshift,
     // lshift}, sixteen bytes.
-    DXR_SURF_CHANNELS = 53,
+    DXR_SURF_CHANNELS = 56,
     DXR_CHANNEL_STRIDE = 16,
     DXR_CHANNEL_MASK = 0,
     DXR_CHANNEL_BITCOUNT = 4,
@@ -201,4 +208,6 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
     recomp_return(c);
 }
 
-#define FN_00a321c0 siege_dxr_copy_rect_blend
+// dxrCopyRectBlend: 0x00a321c0 in the 2021 GOG build, 0x0064cf88 in the
+// community 1.19 patch - the same 180 instructions at a different base.
+#define FN_0064cf88 siege_dxr_copy_rect_blend

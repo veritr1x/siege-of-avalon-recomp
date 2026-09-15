@@ -5597,3 +5597,66 @@ were green on the 2021 image and red the moment the pin moved to 1.19 - 21
 imports, `CharLowerBuffA` among them - and nobody read them. That gate is
 the whole lesson in one line: on any new image, run it before the first
 smoke. All 21 are named now and it is green.
+
+### Playing the 1.19 build (2026-09-15, evening)
+
+**Play aborted once, then did not.** The first hands-on session died on the
+launcher's Play: `an abort from the runtime ... ESP=0eeffca0`, the SEH-frame
+check refusing a registration a few hundred bytes below the guest stack's
+limit. The second session, same click, went through to the game and shut
+down cleanly. The kit gave every guest a fixed 1 MB stack; Windows commits a
+reserve lazily and the 2021 image asks it for 8 MB, so a program is free to
+lean on the reserve at one moment - a display-mode switch that re-enters its
+window procedure - and never again. Kit `ea201f3` makes the guest stack 8 MB.
+The region below it down to the heap's end was unused; worker stacks come
+from the heap.
+
+**The alpha-blended text, re-derived for 1.19.** In the character creator
+the training-style list and every stat value were invisible - the blit the
+game compiles at run time, replaced natively for the 2021 build at
+`0x00a321c0`. The 1.19 function is `0x0064cf88`: the same 180 instructions,
+`RET 0x14`, the same frame, found as the caller of the JIT entry the run log
+named (`call to unknown target 02630139 ... return=0064cd16`).
+
+**And the record it reads is no longer packed.** The 2021 function reads
+Width and Height at `+0x1` and `+0x5`; the 1.19 one at `+0x4` and `+0x8`.
+The newer source declares `TDXR_Surface` as a plain record - a one-byte
+`ColorType` padded to four, the DWORD fields on natural alignment - so every
+offset the native blit uses moved by three: BitCount `0x24`, Bits `0x28`,
+Pitch `0x2c`, the channels at `0x38`. The two constructors show it directly:
+`0x00a28fd4` (2021) writes `+0x1..+0x2d`, `0x00643e60` (1.19) `+0x4..+0x30`,
+74 lines each. `native/dxr_blend.h` now carries the aligned offsets and both
+addresses, and game.toml names the override again.
+
+**No DirectInput at all.** The session log had `GetProcAddress(dinput.dll,
+"DirectInputCreateW") -> 0 (no shim registered)`, and the same for
+`DirectInputCreateEx`. The kit provided only the ANSI entry; a Unicode Delphi
+program asks for the W one and, refused, reads its mouse some slower way -
+the likeliest account of the lag the user felt on mouse movement, though it
+is measured, not assumed, below. The kit now provides `DirectInputCreateW`
+and `DirectInputCreateEx` (the W IIDs are the A ones plus one): the same
+object, remembering that `DIDEVICEINSTANCEW` carries its two names as 260
+UTF-16 units each, at 40 and 560, in an 1100-byte record. The first build
+with that change failed to compile - a helper placed below its first use -
+and the failure was silent inside a chained command, so a session ran on the
+previous binary and reported the same missing entry. Read the build log
+before believing a relaunch.
+
+**Continue crashed on a withdrawn function.** Leaving character creation,
+the game called `0x00664a28` - `PUSH EBP; MOV EBP,ESP; MOV ECX,0x3e`, a real
+function in a gap reached through a data pointer - and the runtime returned
+zero into a `JMP EAX` trampoline at `0x0080e3a0`. Discovery had recovered
+the block, cut it short of its own forward jump to `0x00667242` (mid-body,
+not a start), taken that jump for a dispatch that went nowhere and withdrawn
+it. Named as an entry point it is decoded whole. That is the second time
+tonight the withdrawal rule dropped real code for the sake of a target it had
+not yet recovered; the rule is right on the misdecodes it was written for,
+and a translator-side answer - recover a dispatch target that disassembles
+as code before giving up on the block that names it - is the next kit item.
+
+**Result.** `smoke/new-game.script` on the rebuilt image: exit 0, no JIT
+trap, no missing DirectInput entry, and
+`build/p119m-smoke/smoke_after-new-game-4_present.ppm` shows the creator
+with training points 20 and every stat value drawn - the blend, at its 1.19
+address and aligned offsets, working. The game repo pins the kit at the
+DirectInput W entries.
