@@ -1,0 +1,8 @@
+# A quick press/release, as a real mouse sends it, through the window mapping.
+wait 6000
+move 584 450
+button left down
+button left up
+wait 8000
+dump quick-click
+wait 1000

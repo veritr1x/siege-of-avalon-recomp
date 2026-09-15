@@ -1,0 +1,7 @@
+wait 6000
+click left 584 450
+wait 8000
+click left 400 68
+wait 100000
+dump chargen-late
+wait 1000

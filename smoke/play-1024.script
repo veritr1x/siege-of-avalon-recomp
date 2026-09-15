@@ -1,0 +1,7 @@
+# Play at the form position for a 1024x768 guest screen.
+wait 6000
+dump form
+click left 696 534
+wait 7000
+dump after-play
+wait 1000

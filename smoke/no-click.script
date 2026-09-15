@@ -1,0 +1,4 @@
+# No click at all: does the launcher advance on its own?
+wait 14000
+dump no-click
+wait 1000

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Re-pinned to the community 1.19 patch's GOG executable (2025-06-09) in
+  `original/patched`, replacing the 2021 GOG build. New base, entry and
+  sentinel padding; the DigiFX module is byte-identical and carried over.
+
 - Task 14 complete: the smoke run reaches the main menu. DigiFX
   (`Dfx_p6s.dll`) is carried as an auxiliary guest module rather than shimmed:
   the kit maps, translates and serves a second guest image, and the game's

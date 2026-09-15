@@ -1,0 +1,22 @@
+# Startup form -> main menu -> New Game -> character creation -> into the game.
+# Coordinates are guest pixels in the 800x600 frame, read from the dumps.
+wait 6000
+click left 584 450
+wait 7000
+dump main-menu
+click left 400 68
+wait 8000
+dump character-creation
+click left 372 146
+wait 2500
+dump training-style
+click left 610 470
+wait 4000
+dump continue-1
+wait 6000
+dump continue-2
+wait 8000
+dump continue-3
+wait 10000
+dump continue-4
+wait 2000

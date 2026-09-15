@@ -5159,3 +5159,35 @@ UTF-16 records rather than C strings.
   TDXRMachine JIT in DXEffects (a native override mod), and translator
   regeneration time (about eight minutes; `scratchpad/task-translator-perf.md`).
 
+## Re-pinned to the community 1.19 patch (2026-09-15)
+
+The port moved off the 2021 GOG build and onto the executable in
+`SoA Anthology Patch 1.19 SteamGoG-Version.zip`, at the user's request and
+before the alpha-blending work.
+
+- **What was pinned.** The archive carries store-specific executables; this
+  install is GOG, so `SiegeGoG.exe` (5,792,256 bytes, 2025-06-09) is copied to
+  `Siege.exe`. SHA-256 `645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847`,
+  image base `0x00400000` (the 2021 build linked at `0x00800000`), entry
+  `0x00841ff8`, eleven sections, image end `0x00a37000`.
+
+- **Where it lives.** The patch is 689 MB over 2040 files and overlays a game
+  directory, so `original/gog` (the 2021 install) was cloned to
+  `original/patched` and the archive unpacked over it. The old install and its
+  listings (`analysis/decompiled/Siege.exe-1.03`) are kept, so the previous
+  build can still be built and compared.
+
+- **What carried over unchanged.** `Dfx_p6s.dll` is byte-identical
+  (`cc10def9…bd13`), so the auxiliary-module block needed only a new path.
+
+- **What moved.** Every hook and curated global is a sentinel in the zero
+  padding after `.rsrc`. That padding is now `0x00a36600`-`0x00a37000`, so the
+  whole set moved from `0x00d06e…` to `0x00a36e…`, and the test's sentinel
+  window with it.
+
+- **Still to do at the time of writing.** The Ghidra export of the new image
+  (`tools/analyze.py`), the retranslation, and a smoke run to the main menu.
+  The patch also ships a `Siege.ini` whose defaults differ from the 2021 one
+  (`ScreenResolution=720`, `ForceD3DFullscreen=1`), which the smoke seed may
+  need to account for.
+

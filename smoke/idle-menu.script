@@ -1,0 +1,8 @@
+# Reach the main menu, then sit there while memory is sampled.
+wait 6000
+click left 584 450
+wait 8000
+dump menu
+wait 100000
+dump menu-late
+wait 1000

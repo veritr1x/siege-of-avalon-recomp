@@ -1,0 +1,18 @@
+# Past the main menu: start a new game and watch what the title screen leads to.
+# Coordinates are guest pixels in the 800x600 frame. The menu entries sit on the
+# stone panel; NEW GAME is the top one, centred at about (400,68).
+wait 6000
+dump startup-form
+click left 584 450
+wait 7000
+dump main-menu
+click left 400 68
+wait 3000
+dump after-new-game-1
+wait 4000
+dump after-new-game-2
+wait 6000
+dump after-new-game-3
+wait 8000
+dump after-new-game-4
+wait 2000
