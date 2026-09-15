@@ -3729,3 +3729,198 @@ UTF-16 records rather than C strings.
   **Task 14 remains incomplete.** This commit records the tested input and
   startup-drawing progress with the exact pre-DirectDraw blocker. It does
   not claim that the main menu draws.
+
+- **2026-09-15 — Task 14 resumed: constructor checkpoints and unsupported
+  Media Foundation exports; main menu still blocked by exception return
+  control.** Work stayed in the `kit/` submodule on `siege-delphi`. Three
+  kit commits are now pinned:
+
+  | Kit commit | Change | Verification |
+  | --- | --- | --- |
+  | `a65fed1` | Checkpoint enter/leave/unwind traces include their establishing instructions | Inherited red log: 1 failed, 10 passed; fresh SEH translator run: 11 passed; native SEH: 120 checks, 0 failures |
+  | `ac8abde` | Recognize the Delphi constructor helper's caller-owned registration; create the checkpoint after the helper returns, retire it on absolute `POP FS:[0]`, and recover its handler landing | New driver regression: 2 failed, 15 passed -> combined SEH/driver suites: 152 passed; native SEH: 120 checks, 0 failures |
+  | `2d2eafc` | Present-but-unsupported `mfplat.dll` and `mf.dll` exports | Runtime: 960 checks, 48 failures, 1 skipped -> 944 checks, 0 failures, 1 skipped; missing exports add failure checks in the red run |
+
+  **First decision, established by the regenerated trace:** address
+  `0efffabc` had earlier, unrelated registration lifetimes which entered
+  and retired normally. The media constructor's registration at that address
+  had **never entered**, rather than being retired by a nested callback.
+  `build/task14-handler-trace-run.log` records the actual handler read from
+  `registration + 4`:
+
+  ```text
+  SEH handler: registration=0efffabc handler=0080953d flags=00000000
+  SEH: unwind target has no live checkpoint (registration=0efffabc target=00809542 FS=0fe00000 ESP=0efff9d8)
+  ```
+
+  `functions/00809514.asm` stores handler `0080953d` at `0080952c`, then
+  establishes `FS:[EDX] = ECX` at `00809536`. ECX addresses the caller's
+  reserved 16-byte record. This helper restores its saved registers and
+  returns, so putting setjmp inside it would leave a dead host checkpoint.
+  The media constructor reserves those bytes at `00bc3423` and calls the
+  helper at `00bc3426`, before its ordinary frame at `00bc343d`.
+
+  The translator now recognizes the complete compiler helper sequence,
+  with its handler address read from the image, and the preceding 16-byte
+  reservation at each call site. It places setjmp in the caller after that
+  call. The driver regression relocates the fixture to two synthetic
+  addresses, verifies the helper itself has no checkpoint, checks the
+  normal `POP FS:[0]` retirement and recovered landing provenance, and
+  rejects a short reservation or an unproven FS base. No game address was
+  added to kit code. The unrelated proposed dispatch-depth retirement fix
+  was not applied: this trace did not implicate it.
+
+  **Second decision:** `MFStartup` takes two arguments and returns
+  `MF_E_BAD_STARTUP_VERSION` (`c00d36e3`); `MFShutdown` takes none and returns
+  S_OK. The seven requested `mf.dll` factory/service exports return
+  E_NOTIMPL (`80004001`) and clear their final 32-bit output pointer. This
+  is explicit unavailability, not a media implementation. The argument
+  shapes were checked against Microsoft documentation, including
+  [MFStartup](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mfstartup)
+  and [MFGetService](https://learn.microsoft.com/en-us/windows/win32/api/mfidl/nf-mfidl-mfgetservice).
+  Runtime tests exercise LoadLibraryW/GetProcAddress, return codes, stack
+  cleanup, null outputs and neighboring-word preservation. The one runtime
+  skip remains the existing imported-data prerequisite.
+
+  **Fresh game chronology after the second regeneration:**
+
+  1. Play dismisses the startup settings form. The virtual screen is
+     **800x600** with the script's environment, as the prior run log states;
+     the handoff's 1024x768 description was stale. The existing click
+     **(584,450)** remains correct.
+  2. `MFStartup` resolves and returns `c00d36e3`. MessageBoxW reports
+     `Your computer does not support this Media Foundation API version131184.`
+     and answers default button 1. Delphi then raises its exception; the
+     message being answered does not by itself prove a working no-video path.
+  3. The trace now shows registration `0efffabc` established at `00bc3426`,
+     and its unwind successfully reaches landing **`00809542`**. There is
+     no missing-checkpoint abort. Constructor cleanup calls MFShutdown and
+     CoUninitialize successfully.
+  4. Exception return control is then wrong. A temporary diagnostic added
+     only around `recomp_seh_land`'s guest call recorded:
+
+     ```text
+     SEH landing returned: registration=0efffabc EIP=01000c00 ESP=0efffa6c EAX=00000001
+     ```
+
+     EIP is a guest heap address and ESP remains below the constructor's
+     registration. Execution nevertheless continues in its caller. It
+     attempts MFCreateMediaSession, which returns E_NOTIMPL, and handles a
+     second exception through landing `00bc431c`. Calls through invalid
+     pointers follow; the first target varies with stale memory contents.
+  5. The final, **committed-code** reproduction ends with host exit **5**:
+
+     ```text
+     call to unknown target 57726566 (ESP=0efffa64, return=00808e63): returning 0
+     call to unknown target 00000000 (ESP=0efffa80, return=00966052): returning 0
+     [host] SIGSEGV in guest thread 1: EIP=00000000 ESP=00000008 EBP=00000000
+     ```
+
+  **Next blocker, source evidence and scope boundary:** the constructor's
+  landing calls recovered helper `0080a42c`, which manually removes
+  dispatcher stack words and returns disposition 1 (continue search).
+  The translated caller at `0080955b` still proceeds to its own RET at
+  `00809560`. Meanwhile `recomp_seh_land` assumes that a returned landing
+  has finished the establishing function, retires its checkpoint and
+  dispatch records, and returns to that function's host caller. This
+  evidence points to missing propagation of a guest return across host
+  call frames and resumption of the abandoned exception search. It is
+  distinct from detecting a registration or preserving one across a
+  callback. Correct support needs a tested dispatcher-resumption contract;
+  no speculative fix or game-specific exception bypass was added. Task 14
+  stops here under the instruction to report blockers beyond the scoped
+  checkpoint/Media Foundation work.
+
+  The temporary landing-return probe was removed, followed by a rebuild
+  and the clean reproduction above. Its evidence remains only in ignored
+  `build/task14-landing-return-run.log`. A batch LLDB attempt never completed
+  launch; its owned processes were stopped, and no diagnosis relies on it.
+  The permanent handler trace supplied the required `registration + 4`
+  evidence without the debugger.
+
+  **Frame/Step 3 evidence:** the clean log has **32** lines matching
+  `BitBlt|StretchBlt` (5 BitBlt, 7 StretchBlt and 4 SetStretchBltMode calls,
+  each with an entry and return line), **0** matching `Surface.*::Blt|Flip`, and **0 DirectDraw
+  import calls**. There is therefore no observed DirectDraw method failure
+  or DirectDrawCreateEx fallback to implement yet. The current dump is
+  `build/smoke/smoke_startup-form_present.ppm`, converted to `startup-form.png`:
+  **(800,600), 13000 distinct colours**. Visual inspection shows the gold
+  title artwork, version text, Monitor/Resolution/Fullscreen/Language
+  labels, checkbox and Play over a mostly magenta skin, surrounded by black.
+  This is the startup form, not the title-screen main menu.
+
+  **Deferred drawing defects:** guest TPngImage decodes the startup PNG.
+  The magenta/parchment transparency defect remains to trace through
+  AlphaBlend's premultiplied-alpha path and the 32-bpp
+  CreateDIBSection/StretchDIBits storage paths. Settings-value text is still
+  absent. Keep both items for work after a menu frame exists; no GDI or
+  DirectDraw behavior was changed in this resumption.
+
+  **Acceptance fails:** the run aborts before `dump main-menu`.
+  `smoke_main-menu_present.ppm`, `main-menu.ppm` and `main-menu.png` are all
+  absent. The planned PIL acceptance command exits 1 with FileNotFoundError,
+  recorded in `build/task14-resume-acceptance.log`. The script now documents
+  the capture-name normalization needed after a successful future run.
+  The changelog deliberately does not say that the main menu draws.
+
+  Exact test commands and log locations, from the game root:
+
+  ```sh
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-resume-trace-python.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-resume-trace-native.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-constructor-red.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py kit/tools/recomp/tests/test_translate_driver.py > build/task14-constructor-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-constructor-native.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-mf-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-mf-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-resume-dx.log 2>&1
+  .venv/bin/python build/task-k1-native.py gdi_tests --verbose > build/task14-resume-gdi.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_insns.py > build/task14-resume-insns.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-resume-config.log 2>&1
+  ```
+
+  Native green tails are `100% tests passed, 0 tests failed out of 1`:
+  SEH **120 checks, 0 failures**; runtime **944 checks, 0 failures, 1 skipped**;
+  DX **138822 checks, 0 failures**; GDI **88 checks, 0 failures**.
+  Instruction suite: **54 passed**; config/literal pytest: **8 passed**.
+  Translator red exits 1 with **2 failed, 15 passed**; its combined green
+  tail is **152 passed**. Runtime red exits 1 through the helper after CTest
+  fails with the counts in the table.
+
+  Build/run/image commands:
+
+  ```sh
+  .venv/bin/python tools/build.py --regenerate --target smoke --jobs 8 > build/task14-resume-trace-build.log 2>&1
+  .venv/bin/python tools/build.py --regenerate --target smoke --jobs 8 > build/task14-constructor-build.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-resume-final-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16,800x600x32 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/run-smoke.log 2>&1
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/smoke_startup-form_present.ppm build/smoke/startup-form.png > build/task14-resume-startup-image.log 2>&1
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); print(im.size, len(set(im.getdata())))" > build/task14-resume-acceptance.log 2>&1
+  ```
+
+  All three builds exit 0; the existing common-section alignment warning
+  remains, and the regenerated build also reports existing C-linkage warnings
+  in host headers. Smoke exits 5 and the acceptance command exits 1.
+  The initial trace-only smoke exits 6 and is retained in
+  `build/task14-resume-trace-run.log`; the subsequent handler-read diagnostic
+  also exits 6 in `build/task14-handler-trace-run.log`.
+
+  Before each kit commit, the following commands passed. Logs use the
+  prefixes `task14-resume-trace`, `task14-constructor` and `task14-mf`, with
+  `-format.log`, `-literals.log` and `-repo.log` respectively:
+
+  ```sh
+  .venv/bin/python kit/tools/format.py --write
+  .venv/bin/python kit/tools/check_game_literals.py
+  .venv/bin/python kit/tools/check_repo.py
+  git -C kit diff --cached --check
+  ```
+
+  Formatting reported 270 sources for the first two commits and 271 after
+  adding the Media Foundation module. The source-boundary check reports
+  `Tracked source boundaries and local documentation links passed`;
+  literal/whitespace checks exit 0 silently. Native suites use the existing
+  ignored `build/task-k1-native.py`, because `tools/test.py` has no `-R`;
+  it calls the kit's configure/build/test functions, not compilers directly.
+  Validation remains macOS only. There was no push, executable-hash bypass,
+  guest-address/config change, player-save edit, or private-input commit.

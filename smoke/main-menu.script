@@ -5,6 +5,8 @@
 #   RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke \
 #   RECOMP_PROFILE_DIR=$PWD/build/task14-profile \
 #   RECOMP_DDRAW_MODES=800x600x16,800x600x32 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke
+# After a successful run, normalize the menu capture for the image check:
+#   cp build/smoke/smoke_main-menu_present.ppm build/smoke/main-menu.ppm
 wait 6000
 dump startup-form
 click left 584 450

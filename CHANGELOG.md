@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 14: constructor-helper SEH checkpoints and explicit unsupported Media
+  Foundation exports advance past the missing-checkpoint abort (kit
+  `siege-delphi` 2d2eafc). Exception cleanup still corrupts the guest return
+  path before DirectDraw; the main menu remains unverified. Startup PNG
+  transparency and settings-value text remain open.
+
 - Task 14 resumed: smoke input reaches the startup form's Play control,
   the form keeps its full size, and the skin's delay-loaded AlphaBlend call
   executes (kit `siege-delphi` 93b80a3). Play dismisses the modal, but missing
