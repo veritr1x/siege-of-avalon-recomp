@@ -55,6 +55,10 @@ function_alignment = 4
 listings = "analysis/decompiled/Siege.exe"
 # Curated symbols, relative to this directory.
 globals = "globals.toml"
+# Native replacements for translated functions. The generated sources include
+# this header before they define FN_<addr>: it replaces the software blend the
+# game compiles at run time, which translated code cannot execute.
+overrides = "native/dxr_blend.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
 animation_counter = 0x00d06e00

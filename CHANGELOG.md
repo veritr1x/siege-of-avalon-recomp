@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The interface's alpha-drawn text and panels appear. The game compiles its
+  alpha blit at run time and jumps to it, which translated code cannot
+  execute, so the training-style list, the stat values and every dimmed panel
+  were silently never drawn. `native/dxr_blend.h` replaces that routine.
+
 - Re-pinned to the community 1.19 patch's GOG executable (2025-06-09) in
   `original/patched`, replacing the 2021 GOG build. New base, entry and
   sentinel padding; the DigiFX module is byte-identical and carried over.

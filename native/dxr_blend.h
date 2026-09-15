@@ -15,18 +15,36 @@
 #pragma once
 #include "x86.h"
 
-// TDXR_Surface (graphics/DXRender.pas): plain record, every field 4 bytes.
+// The generated sources see x86.h only, so the arena bound is spelled out
+// here rather than taken from the runtime's own guest.h.
+static inline int dxr_in_arena(uint32_t at, uint32_t n) {
+    return at != 0 && at < GUEST_SIZE && n <= GUEST_SIZE - at;
+}
+
+// TDXR_Surface (graphics/DXRender.pas). The record is PACKED and its first
+// field is a one-byte enum, so every dword after it sits at an odd offset:
+// the routine at 0x00a321c0 reads Width at +1 and Height at +5, which is what
+// fixed these numbers. Reading them off the source's field order alone gives
+// a layout four bytes out and a blit that draws nothing.
 enum {
-    DXR_SURF_COLORTYPE = 0,
-    DXR_SURF_WIDTH = 4,
-    DXR_SURF_HEIGHT = 8,
-    DXR_SURF_BITCOUNT = 36,
-    DXR_SURF_BITS = 40,
-    DXR_SURF_PITCH = 44,
+    DXR_SURF_COLORTYPE = 0,  // 1 byte
+    DXR_SURF_WIDTH = 1,
+    DXR_SURF_HEIGHT = 5,
+    DXR_SURF_WIDTHBIT = 9,
+    DXR_SURF_HEIGHTBIT = 13,
+    DXR_SURF_WIDTH2 = 17,
+    DXR_SURF_HEIGHT2 = 21,
+    DXR_SURF_WIDTHMASK = 25,
+    DXR_SURF_HEIGHTMASK = 29,
+    DXR_SURF_BITCOUNT = 33,
+    DXR_SURF_BITS = 37,
+    DXR_SURF_PITCH = 41,
+    DXR_SURF_PITCHBIT = 45,
+    DXR_SURF_MIPMAP = 49,
     // The variant part. Indexed surfaces start with an index channel; RGB
     // ones start with red. Each TDXR_ColorChannel is {Mask, BitCount, rshift,
     // lshift}, sixteen bytes.
-    DXR_SURF_CHANNELS = 56,
+    DXR_SURF_CHANNELS = 53,
     DXR_CHANNEL_STRIDE = 16,
     DXR_CHANNEL_MASK = 0,
     DXR_CHANNEL_BITCOUNT = 4,
@@ -128,7 +146,7 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
                 continue;
             const uint32_t sp = src_bits + (uint32_t)(syi * src_pitch) + (uint32_t)(sxi * 2);
             const uint32_t dp = dst_bits + (uint32_t)(y * dst_pitch) + (uint32_t)(x * 2);
-            if (!gm_valid(sp, 2) || !gm_valid(dp, 2))
+            if (!dxr_in_arena(sp, 2) || !dxr_in_arena(dp, 2))
                 return;
             const uint32_t s = rd16(sp);
             if (color_key_enable && s == (color_key & 0xffffu))
@@ -148,3 +166,39 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
         }
     }
 }
+
+// dxrCopyRectBlend at 0x00a321c0 in the pinned 2021 build.
+//
+// Delphi's register convention: Self-less unit procedure, so the first three
+// parameters arrive in EAX, EDX and ECX and the rest on the stack, pushed
+// left to right, with the callee clearing them - the body ends RET 0x14, so
+// five stack parameters. Confirmed against the listing: it reads SrcRect from
+// [EBP+0x18], Blend and ColorKeyEnable as bytes from [EBP+0x14] and [EBP+0xc],
+// and Alpha and ColorKey as dwords from [EBP+0x10] and [EBP+8]. At entry ESP
+// points at the return address, which is four less than EBP inside the body.
+static void siege_dxr_copy_rect_blend(X86 *c) {
+    const uint32_t sp = c->r[R_ESP];
+    const uint32_t ret = rd32(sp);
+    const uint32_t dst = c->r[R_EAX], src = c->r[R_EDX], dst_rect = c->r[R_ECX];
+    const uint32_t src_rect = rd32(sp + 0x14);
+    const uint32_t blend = rd32(sp + 0x10) & 0xffu;
+    const int32_t alpha = (int32_t)rd32(sp + 0x0c);
+    const uint32_t key_on = rd32(sp + 0x08) & 0xffu;
+    const uint32_t key = rd32(sp + 0x04);
+    if (dst && src && dst_rect && src_rect && dxr_in_arena(dst_rect, 16) && dxr_in_arena(src_rect, 16) &&
+        dxr_in_arena(dst, DXR_SURF_CHANNELS + 4 * DXR_CHANNEL_STRIDE) &&
+        dxr_in_arena(src, DXR_SURF_CHANNELS + 4 * DXR_CHANNEL_STRIDE)) {
+        int32_t dr[4], sr[4];
+        for (int i = 0; i < 4; ++i) {
+            dr[i] = (int32_t)rd32(dst_rect + 4u * (uint32_t)i);
+            sr[i] = (int32_t)rd32(src_rect + 4u * (uint32_t)i);
+        }
+        dxr_blit_blend(dst, src, dr, sr, blend, alpha, key_on != 0, key);
+    }
+    // Return as the original does: the five stack parameters go with it.
+    c->r[R_ESP] = sp + 4u + 0x14u;
+    c->eip = ret;
+    recomp_return(c);
+}
+
+#define FN_00a321c0 siege_dxr_copy_rect_blend

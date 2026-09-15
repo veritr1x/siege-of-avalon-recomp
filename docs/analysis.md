@@ -5229,3 +5229,39 @@ back to the 2021 GOG build, which reaches character creation, and the 1.19
 work stays in history (`622b153`) with `original/patched` and its listings in
 place to resume from.
 
+## The software blend, replaced natively (2026-09-15)
+
+Everything the interface draws with alpha was invisible: the training-style
+list, every character stat value, the training points. Text drawn without
+alpha was fine, which is why the menus always looked right.
+
+**Cause.** `DXEffects.DrawAlpha` calls `DXRender.dxrCopyRectBlend`, which
+compiles a per-pixel loop into its own machine at run time and jumps to it.
+Translated code cannot execute code the guest generated, so the call did
+nothing at all. The run log showed it as thousands of "guest thunk stopped"
+lines a second, one per blit.
+
+**Fix.** `native/dxr_blend.h` implements the blit natively and game.toml names
+it as `[translate] overrides`, so `funcs.h` defines `FN_00a321c0` to it and
+every call site, tail call and jump-table case follows. Kit `330fef2` added
+the wiring: the translator has emitted `RECOMP_OVERRIDE_HEADER` since the
+override mechanism existed, but nothing set it.
+
+**Two facts had to come off the binary.**
+
+- The convention. Delphi register: Dest in EAX, Src in EDX, DestRect in ECX,
+  then SrcRect, Blend, Alpha, ColorKeyEnable and ColorKey on the stack pushed
+  left to right, callee-cleared - the body ends `RET 0x14`, and it reads
+  SrcRect from `[EBP+0x18]` down to ColorKey at `[EBP+8]`.
+- The record. `TDXR_Surface` is PACKED and opens with a one-byte enum, so the
+  offsets in the Pascal declaration are four bytes out for every field after
+  the first. The blend reads Width at +1 and Height at +5, and
+  `dxrMakeRGBSurface` (0x00a28fd4) writes BitCount, Bits and Pitch at +0x21,
+  +0x25 and +0x29. The first attempt used the source's aligned offsets, bailed
+  out on every call and drew nothing.
+
+**Result.** `build/task29-smoke/smoke_training-style_present.ppm` shows the
+chooser listing Fighter, Scout and Magician with Fighter highlighted, training
+points 10, and every stat value drawn (7/7/7/10/10/5/5/5). Zero guest-thunk
+failures in the run, against thousands before.
+
