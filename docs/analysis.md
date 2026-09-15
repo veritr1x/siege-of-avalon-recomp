@@ -5661,17 +5661,29 @@ with training points 20 and every stat value drawn - the blend, at its 1.19
 address and aligned offsets, working. The game repo pins the kit at the
 DirectInput W entries.
 **Continue crashed again, one layer down.** With `0x00664a28` named, the
-same abort came back without the unknown-call line before it, and this time
-the runtime said precisely why: `no block entry for indirect jump to
-0x0080e3a9 from 0x0080e3a0`. The site is `PUSH 0x80e3a9; ...; POP EAX; JMP
-EAX` - Delphi leaving a finally block - inside `FUN_0080d58c`, a listed
-function whose listing stops at `0x0080da19` and whose body the translator
-had grown past it by following jumps. It could not follow the push: the
-jump dispatches on a variable, so the continuation was never a dangling
-literal, and recursive descent does not see through a PUSH. The body's
-switch over its own instructions therefore lacked the one address the jump
-wanted. Kit (see changelog) makes a body that consumes a pushed address
-with `POP reg; JMP reg` grow into any in-window code address it pushes and
-does not contain. The first draft grew into try-frame handlers as well and
-decoded their stubs out of step; the driver suite's cleanup-alias tests
-caught it before it shipped.
+same abort came back without the unknown-call line before it, and the
+runtime said precisely why: `no block entry for indirect jump to 0x0080e3a9
+from 0x0080e3a0`. The site is `PUSH 0x80e3a9; ...; POP EAX; JMP EAX` -
+Delphi leaving a finally block.
+
+The first fix was aimed at the wrong body. It made a body grow into a
+continuation it pushes when its listing stops short, which is a real case
+and has a test, but here the continuation was already decoded: the listed
+`FUN_0080d58c` had grown past its listed end `0x0080da19` and held
+`L_0080e3a9`, with a switch guard (`t_ < 0x80e7c6u`) that admitted it. The
+crash repeated. A second guess - that the guard was bounded on the listed
+end - was checked against the generated code and was false, and that edit
+is reverted.
+
+What executed the jump was `body_0080da23`: a recovered block, not in the
+listing, that shares `FUN_0080d58c`'s grown tail and so also contains the
+`JMP EAX` at `0x0080e3a0` - without a label for its target. Its switch
+missed and `recomp_jump` had no entry for `0x0080e3a9`. The fix is the one
+jump-table targets already get: a continuation pushed and consumed by
+`POP reg; JMP reg` is registered as a block entry, so any body covering
+that code reaches it through the dispatch table. The first draft of the
+growth also grew into try-frame handlers and decoded their stubs out of
+step; the driver suite's cleanup-alias tests caught it before it shipped.
+
+The lesson for next time: when a run names an address, find every body
+that contains the faulting instruction before deciding which one to fix.
