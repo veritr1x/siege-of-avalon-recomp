@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Task 14: cleanup landings now keep exception dispatchers live and return
+  through callback checkpoints (kit `siege-delphi` 5521cc7). The movie error
+  recovers without corrupting the guest stack. The smoke profile uses the
+  game's `ShowIntro=false` setting to reach graphics initialization, where a
+  pruned dynamic-method target and unresolved wrapper module block the menu.
+  Startup PNG transparency and settings-value text remain open.
+
 - Task 14: constructor-helper SEH checkpoints and explicit unsupported Media
   Foundation exports advance past the missing-checkpoint abort (kit
   `siege-delphi` 2d2eafc). Exception cleanup still corrupts the guest return

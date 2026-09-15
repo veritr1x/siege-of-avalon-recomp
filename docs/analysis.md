@@ -3924,3 +3924,143 @@ UTF-16 records rather than C strings.
   it calls the kit's configure/build/test functions, not compilers directly.
   Validation remains macOS only. There was no push, executable-hash bypass,
   guest-address/config change, player-save edit, or private-input commit.
+
+
+- **2026-09-15 — Task 14 resumed: live cleanup dispatchers; main menu still blocked.**
+  Kit `5521cc7` (`SEH: keep dispatchers live through cleanup landings`) implements
+  the orchestrator's revised landing contract. Interception now calls the block
+  synchronously on the handler/dispatcher host stack. A completed block marks
+  its checkpoint finished, truncates abandoned callback/profile/mod-hook state,
+  and jumps to the establishing frame; `recomp_seh_land` releases ownership and
+  returns without executing the block twice. Active landing environments survive
+  their normal guest frame-leave instruction until this completion.
+
+  `guest_call` now owns a stable per-invocation host environment on a thread-local
+  stack. A helper that removes guest stack words and returns to the innermost
+  callback's sentinel resumes that callback with EAX intact. Both translated RET
+  classification and the unknown-call sentinel path support this. The callback's
+  return-slot range distinguishes its sentinel from an older invocation's
+  identical sentinel. This uses callback nesting and guest stack bounds; there
+  was no existing general host-call-depth counter, and adding one would require
+  changing direct-call emission. Normal callback completion, SEH completion,
+  `_longjmp`, context reuse and thread teardown retire the corresponding records.
+  Frame leave is constrained to the callback level, except for an active landing.
+  The kit's SEH design spec documents the new ownership and return contract.
+
+  **Test-first evidence:** the requested completion, cleanup-helper disposition-1,
+  and nested-raise cases were written first. The native red run reports
+  **183 checks, 16 failures**. After implementation, **205 checks, 0 failures**
+  pass, including both sentinel paths, one-time caller continuation, empty final
+  frame state, exception-allocation cleanup and profiling depth. The standalone
+  instruction harness needed a no-callback stub for the new runtime hook.
+  Runtime validation also caught and preserved the historical unknown-CALL
+  fallback when no live callback owns the sentinel.
+
+  **First smoke run, default intro enabled:** build and smoke both exit **0**.
+  The game displays its unsupported Media Foundation message, cleans up the
+  constructor through registration `0efffabc`, returns disposition 1 to the
+  original dispatcher, and continues to the outer registration `0efffb14`
+  (handler `00a0b968`). Its landing completes and the VCL event loop resumes.
+  There are no undeliverable calls and no corrupt return or missing-checkpoint
+  abort in this run. This fixes the previous blocker, but does not reach a menu.
+  The dump still shows the startup form: gold title artwork, version text,
+  Monitor/Resolution/Fullscreen/Language labels, checkbox and Play on a mostly
+  magenta skin with a black surround. PIL reports **(800, 600), 13000 colours**.
+  The colour threshold alone is insufficient: these are startup controls, not
+  main-menu items. The preserved diagnostic is
+  `build/smoke/task14-default-startup.png`, with log
+  `build/task14-sync-default-run.log`.
+
+  **The no-video assumption was wrong; the game's setting works:**
+  `00bc3414.asm` tests MFStartup's HRESULT at `00bc345e`, displays MessageBoxW,
+  then calls the abort helper at `00bc34a3`. Answering the message does not
+  continue startup. Read-only examination of the recovered code and pinned PE
+  found `[Settings] ShowIntro`, default `true`: the reader at `00bdabb1` uses
+  UTF-16 string `00bdadc8`, compares against `true`, and stores the flag at
+  `00bdabde`; the branch at `00bd5f55` skips the movie constructor when false.
+  A fresh profile containing `ShowIntro=false` demonstrably avoids MFStartup
+  and advances into graphics initialization. The smoke script now documents
+  that setup with exclusive file creation in an ignored smoke-only profile.
+  No installed assets or player saves were modified, and the Media Foundation
+  shims still report the explicitly specified unsupported results.
+
+  **Current blockers after skipping the intro:**
+
+  1. The game calls LoadLibraryW for `soaddraw.dll` at `00a1ba2f`; it returns 0.
+     It then resolves the DirectDraw enumerators, DirectDrawCreate,
+     DirectDrawCreateEx and DirectDrawCreateClipper against that null handle.
+     No `ddraw.dll` fallback load or DirectDraw method invocation occurs in this
+     run. This differs from the earlier survey's fallback assumption. The
+     DirectDrawCreateEx lookup failure here does not establish a missing method
+     on a valid DirectDraw module. The log also records a call to target 0 with
+     return `00a39395`, after cgGetGalaxyAPI returns 0.
+  2. The terminating failure is:
+
+     ```text
+     recomp: no block entry for indirect jump to 0x00bd61fc from 0x008092b8
+     [host] an abort from the runtime in guest thread 1: EIP=008092b8 ESP=0efffd48 EBP=0efffe70
+     ```
+
+     The pinned bytes at `008092b8` are `JMP ECX` after the Delphi dynamic-method
+     lookup. The target starts `PUSH EBP; MOV EBP,ESP; MOV ECX,0x33`, a zero-local
+     allocation loop, and an FS registration at `00bd621d`. The translation
+     report lists `recovered_blocks: ["00bd61fc",1817]` but
+     `blocks_withdrawn: ["00bd61fc","data","00bde304"]`. It has no final table
+     entry. Fixing this requires a translator discovery/pruning regression and
+     regeneration, outside this resumption's authorized landing-contract change.
+     No guest-address seed, generated-code edit, or pruning bypass was added.
+
+  **Final reproduction and acceptance:** the script's mode list now uses
+  `800x600x16`, because the kit rejects an entire override list containing 32 bpp
+  and silently retains its built-in modes after logging a warning. The initial
+  no-intro attempt with the planned two-depth list is retained in
+  `build/task14-no-intro-run.log`; the final supported-mode run is
+  `build/run-smoke.log`. Both abort before `dump main-menu`, with host exit **6**.
+  Stale main-menu-named files from the default-intro diagnostic were removed
+  before the final run. Thus `main-menu.ppm`, `main-menu.png` and
+  `smoke_main-menu_present.ppm` are absent, and image acceptance fails. Task 14
+  remains incomplete; the changelog does not claim that the main menu draws.
+  Step 3's log counts are **32** for `BitBlt|StretchBlt` and **0** for
+  `Surface.*::Blt|Flip`. The former includes 5 BitBlt, 7 StretchBlt,
+  3 SetStretchBltMode and 1 GetStretchBltMode calls, each with entry/return
+  lines. There are **0 DirectDraw import calls** and **0 MFStartup calls**.
+
+  **Deferred drawing defects:** the startup PNG is decoded by guest TPngImage.
+  Its magenta skin/transparency still needs tracing through AlphaBlend's
+  premultiplied path and 32-bpp CreateDIBSection/StretchDIBits. Settings-value
+  text is absent. These remain work after a menu frame exists. No DirectDraw
+  or GDI implementation changed in this resumption.
+
+  Exact validation commands (from the game root):
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-sync-landing-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-sync-landing-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-sync-runtime.log 2>&1
+  .venv/bin/python build/task-k1-native.py profile_tests --verbose > build/task14-sync-profile.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py kit/tools/recomp/tests/test_translate_insns.py tests kit/tests/test_game_literals.py > build/task14-sync-python.log 2>&1
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-menu-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke > build/run-smoke.log 2>&1
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); print(im.size, len(set(im.getdata())))" > build/task14-sync-acceptance.log 2>&1
+  ```
+
+  The red native command exits 1 through CTest. Green tails: SEH **205 checks,
+  0 failures**, runtime **944 checks, 0 failures, 1 skipped** (the existing
+  imported-data prerequisite), profiling **PASS (0 failures; disabled)** and
+  **PASS (0 failures; enabled)**, Python **79 passed**. Native suites use the
+  existing ignored selector because `tools/test.py` has no `-R` option.
+  Profiling initially encountered an old adjacent generated `x86.h`; the normal
+  smoke build refreshed that header and profiling then passed. No translation
+  regeneration was needed. The build exits 0 with existing host-header C-linkage
+  and common-section alignment warnings. The final image check exits 1 with
+  FileNotFoundError, rather than accepting the old startup-form capture.
+
+  Before the kit commit, `.venv/bin/python kit/tools/format.py --write` reported
+  **271 handwritten source files**. `kit/tools/check_game_literals.py`,
+  `kit/tools/check_repo.py` and `git -C kit diff --cached --check` passed (the
+  source-boundary checker reports `Tracked source boundaries and local
+  documentation links passed`). Validation is macOS only; no push, executable
+  hash change, game address in kit runtime code, or private-input commit occurred.
+
+  Final config verification: `.venv/bin/python -m pytest -q tests >
+  build/task14-sync-final-config.log 2>&1`: **5 passed in 0.01s**.
