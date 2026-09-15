@@ -59,6 +59,20 @@ globals = "globals.toml"
 # has been audited. Sentinel, and no reads are rewritten.
 animation_counter = 0x00a36e00
 volatile_reads = []
+# Delphi builds an interface adapter for every method an interface exposes:
+# "ADD dword ptr [ESP+4], -8" to bias Self, then a JMP to the implementation.
+# There are 434 of them in this image and Ghidra lists none - they are packed
+# without padding or alignment and are only ever named by a vtable slot. The
+# scan does find them, and then withdraws each one because the address they
+# all jump to is not an entry point either: 0x00412250 sits in a two-byte gap
+# behind FUN_00412228, so nothing lists it. Naming it keeps the thunks, and
+# with them every interface call in the game.
+#
+# Only this one. Eleven other withdrawn targets pass the "looks like code"
+# heuristic and most are plainly misdecoded ("ADD AL,0x8B; SALC"); an address
+# that fixes nothing is not free, because naming an entry moves the
+# boundaries discovery settles on.
+entry_points = [0x00412250]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the
