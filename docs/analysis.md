@@ -5687,3 +5687,57 @@ step; the driver suite's cleanup-alias tests caught it before it shipped.
 
 The lesson for next time: when a run names an address, find every body
 that contains the faulting instruction before deciding which one to fix.
+
+**Result.** The rebuilt image registers `0x0080e3a9` as a block entry, and a
+hands-on session (`build/play8-profile`) leaves character creation, loads
+the tutorial map (`End Tiles: 41`) and reaches `Start level` with no abort.
+
+## The 2021 GOG build is no longer supported (2026-09-15)
+
+At the user's request the community 1.19 patch is the only supported
+executable. README, CONTRIBUTING, NOTICE and AGENTS.md describe building
+`original/patched` - the GOG install, the 1.19 zip unpacked over it (its
+entries sit at the game root), and `SiegeGoG.exe` moved over `Siege.exe` -
+plus the `--allow-unmodelled` switch the build needs. `game.toml`'s header
+and `native/dxr_blend.h` describe 1.19 only. The 2021 Ghidra listings are
+deleted. `original/gog` stays on disk as a backup of the base install, by
+the user's choice, and nothing refers to it. This log and the changelog keep
+their 2021 history as written.
+
+A correction the removal turned up: kit `ea201f3` justified the 8 MB guest
+stack as the reserve the 2021 image asks Windows for. The 1.19 executable
+reserves exactly a megabyte (`SizeOfStackReserve 0x100000`) - so the same
+code runs deeper under the kit than on Windows, and why is not established.
+Kit `710cd97` keeps the size and says so.
+
+## Where the hover lag is, and where it is not (2026-09-15)
+
+The user reported the game lagging when the mouse moves and when hovering
+over the menu's yellow text. `RECOMP_FRAME_TIMINGS` takes a file path and
+writes one CSV row per presented frame; session 7 was launched with the
+value `1` and so wrote to a file of that name in the repository root. 2605
+frames over 35 seconds:
+
+- **Presentation is not it.** A fresh guest frame reaches the screen in a
+  median 25.1 ms, p95 31.7 ms, worst 38.6 ms; seal to submit is a median
+  0.0 ms, p95 5.4 ms. The ~25 ms is the display path's own depth at 120 Hz.
+- **The game loop stalls.** Fresh frames arrive a median 10 ms apart, but 98
+  times the game produced no new frame for more than 100 ms, in runs of
+  back-to-back ~160 ms gaps (17.6-18.1 s: 164, 163, 165, 162 ms). The
+  presenter re-shows the last image through them - 27% of presented frames
+  are repeats - which is what makes a naive seal-to-present figure climb in
+  25 ms steps to nearly a second. Those are the age of a reused image, not a
+  queue.
+- **Not a timed wait that was found.** Three input-area functions push
+  `0xc8`, but as arguments to ordinary game routines, not to a wait.
+
+What the loop does during a stall is the next measurement:
+`RECOMP_PROFILE=1` runs a 1000 Hz sampler of whichever guest thread holds
+the baton and prints its attribution to stderr at exit - only at a clean
+exit, so the session has to be quit from the game.
+
+**A measuring mistake worth recording.** Checks for a running game used
+`pgrep -f` on the app's path, which also matches any shell whose command
+line contains that path - including the build chain's own - so "game
+running" and a chain's "RELAUNCHED" were unreliable until they matched the
+process name with `pgrep -x`.
