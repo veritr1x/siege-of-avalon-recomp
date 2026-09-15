@@ -4,8 +4,8 @@
 [Testing](docs/testing.md) · [Changelog](CHANGELOG.md)
 
 A native macOS and iPad recompilation of **Siege of Avalon: Anthology**
-(the 2021 GOG release of Digital Tome's Siege of Avalon with all six
-chapters), in progress. Original game instructions are translated to C
+(Digital Tome's Siege of Avalon with all six chapters, as updated by the
+community 1.19 patch), in progress. Original game instructions are translated to C
 ahead of time and compiled with the native host, the way
 [populous-recomp](https://github.com/veritr1x/populous-recomp) and
 [majesty-recomp](https://github.com/veritr1x/majesty-recomp) do it.
@@ -24,8 +24,9 @@ dependency credits.
 
 ## Which executable
 
-The GOG installer ships one game executable, **`Siege.exe`** (file version
-1.20.2.1431), and this port pins it. It is a 2021 **Embarcadero Delphi**
+This port pins the GOG executable from the community **1.19 patch**
+(`SoA Anthology Patch 1.19 SteamGoG-Version.zip`): its `SiegeGoG.exe`,
+linked 2025-06-09 and run as `Siege.exe`. It is an **Embarcadero Delphi**
 build of the game's source, not the 2000 release's binary, and that shapes
 the port: the kit has so far met Visual C++ games that draw straight to
 DirectDraw, and this one is a Delphi VCL application that loads DirectDraw
@@ -34,18 +35,14 @@ sound through FMOD 3, and uses Unicode Windows APIs, structured exception
 handling and a TLS directory throughout. The measurements are in
 [docs/analysis.md](docs/analysis.md).
 
-## Status: surveyed; nothing runs yet
+## Status: menus and character creation run
 
-The repository, configuration and tests are in place and the kit
-configures and links its hosts against this config (`tools/build.py
---stub`). The executable's import surface is measured: 133 of its 543
-imports have kit shims, and the missing ones are mostly the Unicode (`W`)
-variants of APIs the kit serves as `A`, plus the VCL's user32, GDI and
-comctl32 layer. Before a menu can appear the kit needs structured exception
-handling (the Delphi runtime raises and unwinds exceptions as ordinary
-control flow; the kit aborts on `RaiseException`), TLS directory support,
-a `W` shim layer, a GDI text-and-DIB set, and an `fmod.dll` shim module.
-[docs/analysis.md](docs/analysis.md) lists them and keeps the run log.
+The 1.19 image translates (28,504 of 28,560 functions; the build needs
+`--allow-unmodelled`, below), boots through its launcher and main menu, and
+runs character creation with its alpha-blended text drawn natively. Leaving
+character creation loads the first map and then stops on a defect being
+fixed. The run log and every open defect are in
+[docs/analysis.md](docs/analysis.md).
 
 ## Build on macOS
 
@@ -56,16 +53,23 @@ git clone --recurse-submodules https://github.com/veritr1x/siege-of-avalon-recom
 cd siege-of-avalon-recomp
 python3 -m venv .venv
 .venv/bin/python -m pip install -r kit/requirements-dev.txt
-innoextract --extract --output-dir original/gog "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
-.venv/bin/python tools/setup.py --install original/gog --link-only
+innoextract --extract --output-dir original/patched "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
+unzip -o "/path/to/SoA Anthology Patch 1.19 SteamGoG-Version.zip" -d original/patched
+mv original/patched/SiegeGoG.exe original/patched/Siege.exe
+.venv/bin/python tools/setup.py --install original/patched --link-only
 .venv/bin/python tools/analyze.py --ghidra-home /path/to/ghidra_12.1.3_PUBLIC
-.venv/bin/python tools/build.py --regenerate
+.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code"
 ```
 
-`original/gog` is where `game.toml` expects the game; extracting the GOG
-installer there with [innoextract](https://constexpr.org/innoextract/) is
-the same as linking an installed copy with `tools/setup.py --install
-/path/to/installed/game --link-only`. `tools/setup.py`, `tools/build.py`,
+`original/patched` is where `game.toml` expects the game: the GOG install
+with the 1.19 patch unpacked over it and the patch's GOG executable in place
+of `Siege.exe`. Building it there with
+[innoextract](https://constexpr.org/innoextract/) is the same as linking an
+installed copy you have patched the same way with `tools/setup.py --install
+/path/to/installed/game --link-only`. `--allow-unmodelled` is required: the
+listings decode the padding behind some functions as code, and each such
+instruction becomes a trap at its own address instead of refusing the build.
+`tools/setup.py`, `tools/build.py`,
 `tools/test.py` and `tools/ios_logs.py` are four-line wrappers around the
 kit's tools; every option is the kit's (`--help` lists them).
 `tools/analyze.py` is this game's own: the kit's setup exports listings from
@@ -76,7 +80,7 @@ the logs) live under ignored `build/`; the game lives in ignored
 
 ## Play on an iPad
 
-Not yet: nothing translates. When it does, the steps are the kit's:
+Not tried on this build yet. The steps are the kit's:
 
 ```sh
 export RECOMP_IOS_TEAM=<your team id>       # security find-identity -v -p codesigning

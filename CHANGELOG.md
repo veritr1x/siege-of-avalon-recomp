@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The 2021 GOG build is no longer supported; the community 1.19 patch's GOG
+  executable is the only one. README, CONTRIBUTING and NOTICE describe
+  building `original/patched` - the GOG install with the patch unpacked over
+  it and `SiegeGoG.exe` in place of `Siege.exe` - and the required
+  `--allow-unmodelled` switch. The 2021 Ghidra listings are deleted;
+  `original/gog` stays on disk as a backup of the base install, and nothing
+  refers to it.
+
 - The interface's alpha-drawn text and panels appear. The game compiles its
   alpha blit at run time and jumps to it, which translated code cannot
   execute, so the training-style list, the stat values and every dimmed panel

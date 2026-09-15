@@ -8,7 +8,7 @@ exports with analysis switched off, which suits a game whose functions were
 recovered by hand. No such set exists for Siege.exe, so this script imports
 the linked executable, runs Ghidra's default analyzers, and exports the same
 listing layout the kit's translator reads (functions.tsv, functions/*.asm)
-into ignored analysis/decompiled/Siege.exe with the kit's ExportProgram.java.
+into ignored analysis/decompiled/Siege.exe-1.19 with the kit's ExportProgram.java.
 Run tools/setup.py --install ... --link-only first. The export of a 4 MB
 .text section takes a few minutes; the log is build/analyze.log."""
 
@@ -59,7 +59,7 @@ def main():
         env["JAVA_HOME"] = str(args.java_home.expanduser().resolve())
         env["PATH"] = str(Path(env["JAVA_HOME"]) / "bin") + os.pathsep + env.get("PATH", "")
     env["MAXMEM"] = args.max_memory
-    listings = cfg["listings_path"]            # analysis/decompiled/Siege.exe
+    listings = cfg["listings_path"]            # analysis/decompiled/Siege.exe-1.19
     output = listings.parent                   # analysis/decompiled
     project = output.parent / "ghidra"
     project.mkdir(parents=True, exist_ok=True)

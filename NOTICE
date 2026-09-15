@@ -12,7 +12,8 @@ the git submodule at kit/, under its own LICENSE and NOTICE.
 
 Original game files are not distributed in this repository and are not relicensed
 by its MIT license. A translation of the one supported build of the game's
-executable, Siege.exe (file version 1.20.2.1431, SHA-256 0c028b58...ebd5b), is
+executable - the community 1.19 patch's GOG build, SiegeGoG.exe run as
+Siege.exe (SHA-256 645eaa1e...ba847) - is
 generated locally under ignored build/ from the player's own copy by the kit's
 tools; nothing generated is tracked, and the translation claims nothing over the
 original work's behaviour or ownership. The game's executable, data, artwork,

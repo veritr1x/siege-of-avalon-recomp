@@ -27,7 +27,7 @@ until then report them as not run, not as passing.
 
 ## Bring-up checks
 
-`tools/analyze.py` leaves `analysis/decompiled/Siege.exe/summary.txt` with
+`tools/analyze.py` leaves `analysis/decompiled/Siege.exe-1.19/summary.txt` with
 the function count Ghidra discovered and how many decompiled.
 `tools/build.py --regenerate` writes `build/recomp/translate-report.json`
 once the translator gets past its discovery gates; its

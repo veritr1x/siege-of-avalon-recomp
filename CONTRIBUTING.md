@@ -20,15 +20,16 @@ and keeping [docs/analysis.md](docs/analysis.md) true.
 - Your own copy of Siege of Avalon: Anthology from GOG, either installed or
   as the offline installer plus [innoextract](https://constexpr.org/innoextract/)
   (`brew install innoextract`).
+- The community 1.19 patch, `SoA Anthology Patch 1.19 SteamGoG-Version.zip`.
 
-The executable must be `Siege.exe` with SHA-256:
+The executable must be the patch's GOG build, `SiegeGoG.exe`, in place of
+`Siege.exe`, with SHA-256:
 
 ```text
-0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b
+645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847
 ```
 
-That is the installer's only game executable (file version 1.20.2.1431,
-built 2021-05-01 with Embarcadero Delphi). The loader refuses other
+It was linked 2025-06-09 with Embarcadero Delphi. The loader refuses other
 binaries because translated addresses and data layouts are tied to this
 image. Do not bypass the hash to add support for another version; a second
 version is a second `game.toml`.
@@ -36,24 +37,27 @@ version is a second `game.toml`.
 ## Prepare your game installation
 
 The game directory must contain `Siege.exe` and its `ArtLib`, `Interface`,
-`Maps` and `Movies` directories. Either extract the GOG installer straight
-into `original/gog`, which is where `game.toml` expects the game:
+`Maps` and `Movies` directories, with the 1.19 patch unpacked over them.
+Either build it in `original/patched`, which is where `game.toml` expects
+the game:
 
 ```sh
-innoextract --extract --output-dir original/gog "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
-.venv/bin/python tools/setup.py --install original/gog --link-only
+innoextract --extract --output-dir original/patched "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
+unzip -o "/path/to/SoA Anthology Patch 1.19 SteamGoG-Version.zip" -d original/patched
+mv original/patched/SiegeGoG.exe original/patched/Siege.exe
+.venv/bin/python tools/setup.py --install original/patched --link-only
 ```
 
-or link an installed copy (paths containing spaces are supported when
-quoted):
+or link an installed copy you have patched the same way (paths containing
+spaces are supported when quoted):
 
 ```sh
 .venv/bin/python tools/setup.py --install "/path/to/GOG Games/Siege of Avalon - Anthology" --link-only
 ```
 
 Setup verifies the executable and links the installation at ignored
-`original/gog/` (a copy or extraction placed there directly is accepted, as
-above). It does not download the game. Then export the listings:
+`original/patched/` (a copy or extraction placed there directly is accepted,
+as above). It does not download the game. Then export the listings:
 
 ```sh
 .venv/bin/python tools/analyze.py \
@@ -63,7 +67,7 @@ above). It does not download the game. Then export the listings:
 
 `tools/analyze.py` imports the executable into a disposable Ghidra project,
 runs Ghidra's default analyzers and exports translation inputs into ignored
-`analysis/decompiled/Siege.exe` with the kit's export script; the log is
+`analysis/decompiled/Siege.exe-1.19` with the kit's export script; the log is
 `build/analyze.log`. The kit's own `tools/setup.py` without `--link-only`
 is not used here: it exports with analysis off and expects a curated
 annotation set, which this executable does not have.
@@ -71,12 +75,15 @@ annotation set, which this executable does not have.
 ## Build and run
 
 ```sh
-.venv/bin/python tools/build.py --regenerate --jobs 8   # translate, then compile
+.venv/bin/python tools/build.py --regenerate --jobs 8 \
+  --allow-unmodelled "Ghidra decodes padding as code"   # translate, then compile
 .venv/bin/python tools/build.py --jobs 8                # afterwards
 ```
 
-The translation is where the bring-up currently stops; see
-[docs/analysis.md](docs/analysis.md) for the state of it. `--target ios`
+`--allow-unmodelled` is required for this image: its listings decode the
+padding behind some functions as code, and each such instruction becomes a
+trap at its own address rather than a refused build. The state of the
+bring-up is in [docs/analysis.md](docs/analysis.md). `--target ios`
 builds, signs and installs the iPad app (`RECOMP_IOS_TEAM` or `--team`) once
 a macOS build runs. The CMake tree lives in `build/cmake/<preset>`.
 
