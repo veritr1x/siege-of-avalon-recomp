@@ -5331,19 +5331,72 @@ the source rectangle so a stretch keeps its ratio. That is what completed the
 heads-up display.
 
 
-## Open: ESC in the world underflows the guest stack
+## ESC in the world: a function the listing never started
 
-`smoke/world3.script` ends with an ESCAPE press, and the run dies there:
+**Symptom.** `smoke/world3.script` presses ESCAPE after the opening
+conversation and the run dies. Twice, differently: `SIGBUS ... ESP=fffffff8`
+(the stack pointer wrapped below zero) and `SIGSEGV ... ESP=0eff0023` (three
+bytes out of alignment). The same script with its ESCAPE step removed runs to
+the end and dumps the level, so the key is the trigger.
+
+**Cause.** The log names it two lines before the fault:
 
 ```
-[host] SIGBUS in guest thread 1: EIP=0096266c ESP=fffffff8 EBP=00000008
-[host] the guest stack pointer is outside the main stack
+[recomp] call to unknown target 00bd0ee0 (ESP=0efffcdc, return=00a8895e): returning 0
 ```
 
-ESP has wrapped below zero, so the stack was already unbalanced when the
-fault hit. `FUN_00962638` is a Delphi frame that installs two exception
-registrations, calls a method indirectly (`CALL dword ptr [EBX + 0x48]`) and
-then restores the chain at 0x0096266c - the faulting instruction. The same
-function appears in the recursive exception cycle of an earlier crash report,
-so the indirect call, not the key, is the thing to look at. Reproduce with
-`smoke/world3.script`; the same script without its ESCAPE step is the control.
+`0x00bd0ee0` is a real function that Ghidra's listing does not start. The
+forty bytes in front of it settle what it is:
+
+```
+10 00 00 00 4d 00 61 00 69 00 6e 00 2e 00 46 00 6f 00 72 00 6d 00
+4b 00 65 00 79 00 44 00 6f 00 77 00 6e 00 00 00 00 00
+        -> a length-prefixed UTF-16 "Main.FormKeyDown"
+55 8b ec 53 56 57 8b f1 8b d8
+        -> PUSH EBP; MOV EBP,ESP; PUSH EBX; PUSH ESI; PUSH EDI;
+           MOV ESI,ECX; MOV EBX,EAX - Delphi's register convention
+```
+
+It is `TMainForm.FormKeyDown`, and the string is its published-method name.
+That is the whole explanation for the gap. A published method is found by
+name through RTTI at run time, so no static pointer to it exists for the
+translator's data-pointer scan to follow, and the string in front of it
+breaks the listing's run of code. Returning zero for the call leaves the
+caller's stack unbalanced by whatever the callee would have cleaned, and the
+guest faults a few returns later - which is why neither faulting address is
+anywhere near the real defect.
+
+**Fix.** `[translate] entry_points = [0x00bd0ee0]` in game.toml. The kit has
+had the setting since the translator did; this is a game fact and belongs
+with the game.
+
+**What the first attempt cost.** Eleven addresses were declared at once,
+harvested from every "call to unknown target" in older run logs. That build
+failed with two dangling dispatch targets (`fn_0080e3a8` to `0080e5f7`):
+naming an entry point moves the boundaries discovery settles on, so an
+address that fixes nothing is not free. Each one has to earn its place.
+
+**What it also uncovered.** The first regeneration after the entry point was
+added failed with two dispatch targets `fn_0080e3a8` does not reach:
+`0080e5d4` and `0080e5f7`, from `JE`s at `0080e586` and `0080e58d`. That
+function's listing ends at `0080e567` with `RET`, so those instructions are
+in the padding behind it. The regression is not the entry point - narrowing
+the eleven addresses to one reproduced it exactly - but kit `7a6f77b`, which
+taught the translator the port string instructions during the 1.19 attempt
+and was never re-run against this image: a speculative block that used to be
+discarded because it could not be translated now survives and carries two
+misdecoded jump targets into the build. The last clean translation predates
+it.
+
+**Resolution.** The image is translated with `--allow-unmodelled`, which is
+what the switch is for: 2365 instructions - `ARPL`, 16-bit addressing, the
+signature of string data read as code - become traps at their own addresses,
+and kit `a98dbb6` turns those two dispatches into the same trap. 29144 of
+29275 functions translate, 42774 entry points.
+
+**Result.** `smoke/world3.script` runs to the end and exits 0, "all
+expectations met", with `smoke_level_present.ppm` written after the ESCAPE
+step that used to kill the run. The map still loads on the retranslated
+image: `End Tiles: 846`, `End Items: 1239`. ESCAPE does not close the
+conversation in this game, which is the game's own behaviour; what it no
+longer does is crash.
