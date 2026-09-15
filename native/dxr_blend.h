@@ -21,18 +21,12 @@ static inline int dxr_in_arena(uint32_t at, uint32_t n) {
     return at != 0 && at < GUEST_SIZE && n <= GUEST_SIZE - at;
 }
 
-// TDXR_Surface (graphics/DXRender.pas). The record is PACKED and its first
-// field is a one-byte enum, so every dword after it sits at an odd offset:
-// the routine at 0x00a321c0 reads Width at +1 and Height at +5, which is what
-// fixed these numbers. Reading them off the source's field order alone gives
-// a layout four bytes out and a blit that draws nothing.
-// Field offsets of TDXR_Surface in the community 1.19 patch, where the record
-// is a plain Delphi record: a one-byte ColorType padded to four, then the
-// DWORD fields on their natural alignment. The 2021 GOG build declared it
-// packed, so every offset below was three smaller there - Width at 1, Height
-// at 5, BitCount at 0x21, Bits at 0x25, Pitch at 0x29, the channels at 0x35.
-// dxrMakeRGBSurface writes the fields in order and shows which layout an
-// image has: 0x00a28fd4 (2021) writes +0x1..+0x2d, 0x00643e60 (1.19) +0x4..+0x30.
+// TDXR_Surface (graphics/DXRender.pas) is a plain Delphi record: a one-byte
+// ColorType padded to four, then the DWORD fields on their natural alignment.
+// dxrMakeRGBSurface (0x00643e60) writes them in order at +0x4..+0x30, and
+// dxrCopyRectBlend reads Width at +4 and Height at +8, which is what fixed
+// these numbers. Taken from a packed layout every field is three bytes out
+// and the blit draws nothing.
 enum {
     DXR_SURF_COLORTYPE = 0,  // 1 byte
     DXR_SURF_WIDTH = 4,
@@ -174,7 +168,7 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
     }
 }
 
-// dxrCopyRectBlend at 0x00a321c0 in the pinned 2021 build.
+// dxrCopyRectBlend, at 0x0064cf88.
 //
 // Delphi's register convention: Self-less unit procedure, so the first three
 // parameters arrive in EAX, EDX and ECX and the rest on the stack, pushed
@@ -208,6 +202,4 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
     recomp_return(c);
 }
 
-// dxrCopyRectBlend: 0x00a321c0 in the 2021 GOG build, 0x0064cf88 in the
-// community 1.19 patch - the same 180 instructions at a different base.
 #define FN_0064cf88 siege_dxr_copy_rect_blend

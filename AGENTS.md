@@ -8,12 +8,13 @@ git submodule of recomp-kit); edit those in the kit's own repository and
 bump the submodule here. Game files and translations are private local
 inputs under ignored `original/`, `analysis/` and `build/`.
 
-- The port is at the survey stage. docs/analysis.md records what the
-  executable needs, what the kit lacks and how far each run got; keep it
-  current rather than claiming progress in README.md.
-- The pinned executable is the installer's `Siege.exe` (file version
-  1.20.2.1431, a 2021 Delphi build). Do not bypass the hash: another build
-  is another `game.toml`.
+- The port runs its menus and character creation. docs/analysis.md records
+  what the executable needs, what the kit lacks and how far each run got;
+  keep it current rather than claiming progress in README.md.
+- The pinned executable is the community 1.19 patch's GOG build,
+  `SiegeGoG.exe` moved over `Siege.exe` in `original/patched`. Do not bypass
+  the hash: another build is another `game.toml`. Build with
+  `--allow-unmodelled`: its listings decode padding as code.
 - This is a Delphi program, not a Visual C++ one. Expect Unicode (`W`)
   imports throughout, exceptions raised through `RaiseException` and
   `RtlUnwind` as ordinary control flow, a `.tls` directory, delay-loaded

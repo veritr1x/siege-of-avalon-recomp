@@ -1,9 +1,8 @@
 # game.toml - everything the kit needs to know about Siege of Avalon: Anthology
-# (the 2021 GOG release, offline installer 1.03.1 build 46736) that is not
-# derivable from the binary. The installer ships one game executable,
-# Siege.exe (file version 1.20.2.1431, built 2021-05-01 with Embarcadero
-# Delphi), the GOG launcher's only play task. See docs/analysis.md for what
-# it needs from the kit.
+# with the community 1.19 patch that is not derivable from the binary. The
+# patch ships store-specific executables; this port pins the GOG one,
+# SiegeGoG.exe (linked 2025-06-09, Embarcadero Delphi), moved over the
+# install's Siege.exe. See docs/analysis.md for what it needs from the kit.
 #
 # Addresses are guest addresses in the pinned executable. The [hooks] values
 # are sentinels: they point into the zero-filled section padding after .rsrc
