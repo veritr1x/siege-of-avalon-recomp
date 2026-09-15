@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Task 14 complete: the smoke run reaches the main menu. DigiFX
+  (`Dfx_p6s.dll`) is carried as an auxiliary guest module rather than shimmed:
+  the kit maps, translates and serves a second guest image, and the game's
+  sprite library runs as its own code. The capture shows all eight menu
+  entries over the stone frame.
+
+- Shutdown: after `ExitProcess` no guest worker runs guest code again and each
+  one ends, so the seeded smoke run now exits 0 instead of crashing in a
+  worker on torn-down state.
+
 - Task 14b: the kit's software Direct3D 11 presenter now initializes, uploads
   the game's 16-bit surfaces and presents frames through the host display seam
   (`siege-delphi` 4f414ec). Native quad, alpha-blend and frame-file checks pass.

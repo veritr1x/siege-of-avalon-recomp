@@ -74,6 +74,20 @@ def main():
     index = listings / "functions.tsv"
     if not index.is_file() or len(index.read_text().splitlines()) < 2:
         sys.exit("Ghidra did not export a function index; inspect its output")
+    # Auxiliary modules (game.toml [modules.aux.*]) get listings of their own,
+    # beside the executable's, from the same Ghidra project and export script.
+    for module in cfg["aux_modules"]:
+        digest = hashlib.sha256(module["path"].read_bytes()).hexdigest()
+        if digest != module["sha256"]:
+            sys.exit("Unsupported %s: SHA-256 %s; expected %s" % (module["name"], digest, module["sha256"]))
+        subprocess.run([
+            str(ghidra / "support/analyzeHeadless"), str(project), cfg["game"]["app_name"] + "-" + module["key"],
+            "-import", str(module["path"]), "-deleteProject",
+            "-scriptPath", str(KIT / "tools"),
+            "-postScript", "ExportProgram.java", str(output),
+        ], cwd=ROOT, env=env, check=True)
+        if not (module["listings_path"] / "functions.tsv").is_file():
+            sys.exit("Ghidra did not export a function index for %s" % module["name"])
     (output / "inputs.json").write_text(json.dumps({
         "executable_sha256": cfg["game"]["sha256"],
         "annotations_revision": None,

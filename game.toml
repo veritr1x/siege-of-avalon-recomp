@@ -30,6 +30,22 @@ guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 developer_exe = "original/gog/Siege.exe"
 # The game selects system DirectDraw on Windows 6.1 (default build 7601).
 windows_version = "6.1"
+# The arena grows past the kit's 256 MB so Dfx_p6s.dll maps at its preferred
+# base 0x10000000 (no relocation support; Ghidra cannot rebase the listing).
+guest_size = 0x10100000
+
+# DigiFX, the sprite RLE/blit library every draw path calls through
+# StartupLibrary's 14-op table. The runtime maps and translates it as a
+# second guest image; LoadLibrary("Dfx_p6s.dll") hands out its base.
+[modules.aux.dfx]
+name = "Dfx_p6s.dll"
+path = "original/gog/Dfx_p6s.dll"
+sha256 = "cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13"
+base = 0x10000000
+size = 0x28000
+listings = "analysis/decompiled/Dfx_p6s.dll"
+# A Borland C++ DLL: no function alignment to lean on.
+function_alignment = 1
 
 [translate]
 # Listed-start histogram peaks at mod-16 offsets 0, 4, 8, 12: Delphi uses 4-byte alignment.

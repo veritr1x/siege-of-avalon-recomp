@@ -5104,3 +5104,58 @@ UTF-16 records rather than C strings.
   scope boundary.** No additional kit fix was made after the three green
   commits; the game repository pins `4f414ec` and records this incomplete
   main-menu milestone.
+
+## Task 14 completed: the main menu, through DigiFX as a translated module
+
+- **Run: auxiliary guest modules (2026-09-15, Claude, no delegation).** The
+  DigiFX blocker was not a missing shim but a missing image. `Dfx_p6s.dll` is
+  x86 code the game calls through `StartupLibrary`'s fourteen-entry table, so
+  the kit gained a way to carry a second guest image rather than a stand-in for
+  one. Kit commits on `siege-delphi`: `51895c4` (config), `14dc199`
+  (translator), `823acf4` (runtime, loader, build and cmake).
+
+  game.toml now carries `guest_size = 0x10100000` and a `[modules.aux.dfx]`
+  block naming the DLL, its SHA-256, base `0x10000000` and size `0x28000`. The
+  arena grows past the kit's 256 MB because the listing cannot be rebased, so
+  the module has to live at its preferred base, above the import trampolines.
+  `tools/analyze.py` exports its listings from the same Ghidra project.
+
+  `translate.py --module dfx` writes `gen/aux-dfx/` with every table prefixed
+  `recomp_dfx_` and a constructor that registers a `RecompModule` with the
+  runtime. `recomp_call`, `recomp_jump`, `recomp_return` and
+  `recomp_thunk_target_kind` consult that registry after the image's own table
+  misses, so calls cross the boundary in both directions with no special case.
+  The loader maps the module's sections after the image, verifies its hash the
+  way it verifies the executable, and records its export directory;
+  `LoadLibraryW("Dfx_p6s.dll")` returns `0x10000000` and `GetProcAddress`
+  resolves `StartupLibrary` to `0x10001000`. Staging keeps the DLL in the
+  bundle despite the `*.dll` exclusion.
+
+- **Result.** The seeded fullscreen smoke reaches the main menu. The capture
+  `build/task14b-task15-aux-smoke/smoke_main-menu_present.ppm` (800x600, 296
+  distinct colours) shows the stone frame, the cursor and all eight entries:
+  NEW GAME, LOAD, SAVE, OPTIONS, HISTORY, CREDITS, EXIT, RESUME. The game's
+  own log runs from `Initializing DFX...` through every resource load to
+  `Load complete`, then the script's shutdown. **Task 14's image acceptance is
+  met.**
+
+- **Follow-up fixed in the same run.** After `ExitProcess(0)` the host still
+  crashed: the run thread retired and handed the baton to a guest worker, which
+  ran on into torn-down state (`SIGSEGV in guest thread 3` at `00a09388`; a
+  second run instead took `SIGBUS` there while the same worker recreated
+  `tfrmmain`). The scheduler already refused to run workers while an exit was
+  *requested* by a worker, but the main thread's own `ExitProcess` published
+  nothing. It now does, a thread first scheduled after an exit does not run its
+  start routine, and a pending exit makes each worker runnable once so it can
+  end rather than park for good. Kit `65d4a27` and `1bef5bc`, with a
+  child-process check in `runtime_tests` ("ExitProcess stops guest workers").
+
+- **Clean run.** `build/task14b-run-smoke.py task15d` exits **0**: the main
+  menu is captured, `ExitProcess(0)` is reached, every guest worker ends, and
+  the host reports no crash and no worker outliving the run. `runtime_tests`
+  passes 1096 checks with the DigiFX module mapped.
+
+- **Still open.** The startup form's PNG transparency and text defects, the
+  TDXRMachine JIT in DXEffects (a native override mod), and translator
+  regeneration time (about eight minutes; `scratchpad/task-translator-perf.md`).
+

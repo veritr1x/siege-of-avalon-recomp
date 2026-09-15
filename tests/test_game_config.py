@@ -57,6 +57,18 @@ class SiegeConfigTests(unittest.TestCase):
     def test_delphi_function_alignment(self):
         self.assertEqual(self.cfg["translate"]["function_alignment"], 4)
 
+    def test_digifx_is_an_auxiliary_module_at_its_preferred_base(self):
+        self.assertEqual(self.cfg["game"]["guest_size"], 0x10100000)
+        [dfx] = self.cfg["aux_modules"]
+        self.assertEqual(dfx["key"], "dfx")
+        self.assertEqual(dfx["name"], "Dfx_p6s.dll")
+        self.assertEqual((dfx["base"], dfx["size"], dfx["function_alignment"]), (0x10000000, 0x28000, 1))
+        self.assertEqual(dfx["path"], (ROOT / "original/gog/Dfx_p6s.dll").resolve())
+        self.assertEqual(dfx["listings_path"], (ROOT / "analysis/decompiled/Dfx_p6s.dll").resolve())
+        self.assertIn("#define RECOMP_GUEST_SIZE 0x10100000u", self.header)
+        self.assertIn('{"Dfx_p6s.dll", ', self.header)
+        self.assertIn("0x10000000u, 0x00028000u}", self.header)
+
     def test_windows_version_selects_system_directdraw(self):
         self.assertEqual(self.cfg["game"]["windows_version"], "6.1")
         for field, value in (("MAJOR", 6), ("MINOR", 1), ("BUILD", 7601), ("PLATFORM", 2)):
