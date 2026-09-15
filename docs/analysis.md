@@ -4771,3 +4771,168 @@ UTF-16 records rather than C strings.
   private assets, player saves, binaries or run logs are committed; nothing
   was pushed. **Open boundary: resolve the forced D3D11 fullscreen path
   before claiming a DirectDraw main-menu frame.**
+
+- **2026-09-15 — Task 14: fullscreen seed tested; supplied source differs
+  from the pinned executable at the renderer selection.**
+  **Task 14 remains incomplete.** The requested eight-key seed is now
+  `smoke/siege.ini`, with a source-line comment per key. The script header
+  describes copying it to a newly created smoke-only profile selected by
+  `RECOMP_PROFILE_DIR`. It requests `Windowed=False`, `CustomDDrawDLL=true`,
+  `DDrawVersion=None`, `ShowIntro=false`, `ShowOutro=false`, `AltCursor=true`,
+  `ScreenResolution=600` and `D3DVSync=False`. The script at the starting game
+  commit `d3d58bc` already clicked only Play at `(584,450)`; its commands
+  remain unchanged. The misleading no-intro-override comments were replaced.
+
+  **Source review:** the supplied, ignored source under
+  `analysis/source/soa/siege-of-avalon-master/src/win32` is useful context,
+  but its active renderer-selection code is not the pinned binary's code.
+  In `engine/SoAOS.Animation.pas:805-813`, the old condition
+  `IsWindows7 and (not Windowed)` and the ForceD3DFullscreen alternative
+  are enclosed in a Pascal `(* ... *)` comment. Lines 814-825 instead
+  select the fallback using AltCursor. Lines 905-951 create the D3D11
+  renderer only after Windowed is true; the subsequent fullscreen branch
+  sets a display mode and creates the flipping primary and back buffer.
+  The launcher source at `interface/SoAOSExtSetting.pas:541,769-773`
+  confirms that the checkmark is fullscreen and Play saves its inverse.
+
+  **Fresh seeded smoke run:** `build/run-smoke.log`, host exit **0**.
+  The profile is `build/task14-fullscreen-profile`; its post-run INI keeps
+  `Windowed=0`, both movie flags false, CustomDDrawDLL true, DDrawVersion
+  None, AltCursor true and ScreenResolution 600. The launcher writes
+  `ForceD3DFullscreen=1` and `D3DVSync=1`; the seed's vsync preference is
+  therefore not preserved by this binary. That secondary discrepancy was
+  recorded, not diagnosed as a new task.
+
+  DirectDrawEnumerateExA, DirectDrawCreate and QueryInterface for the original
+  IDirectDraw all return S_OK. SetCooperativeLevel also returns S_OK, but
+  receives **flags `00000008` (NORMAL)**, not exclusive/fullscreen `00000011`.
+  No MFStartup call occurs. The run then reports:
+
+  ```text
+  LoadLibrary("d3d11.dll"): no shims for that module, reporting it as missing
+  ```
+
+  The game's own `build/task14-fullscreen-profile/Siege.log` was read after
+  the run. Its final initialization sequence is `Initializing DX...`,
+  `DX: Using Device driver: \\.\DISPLAY1`, then
+  **`Main.FormShow External exception C06D007E`**. There is no
+  `DX initialization complete` or `Using 555/565 Driver` entry. The script
+  completes and the game shuts down normally after the caught exception.
+
+  **Pinned-binary evidence, refreshed this session:** SHA-256 is still
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+  Capstone disassembly directly from the PE is saved in
+  `build/task14-fullscreen-binary.log`. These recovered functions are absent
+  from the original Ghidra function listings; their current generated C in
+  `build/recomp/gen/chunk_123.c` was compared with the PE, not edited.
+
+  - `00b0eefd`–`00b0ef17` computes the flag at `00c31208` from Windows
+    major 6 and minor 1.
+  - `00b0f0ac` tests that flag. With it set and `[EBP+10]` (Windowed) zero,
+    `00b0f0b9` branches straight to `00b0f0cc`, skipping the separate
+    ForceD3DFullscreen check. Thus turning that preference off would not
+    bypass the Windows-7 condition.
+  - `00b0f0cc` sets the emulated-fullscreen flag at `00c31201` to 1;
+    `00b0f0d3` writes **1 to Windowed at `[EBP+10]`**. This is the old
+    condition commented out in the supplied source, not its AltCursor branch.
+  - `00b0f30a` selects NORMAL cooperative level. `00b0f374` tests the
+    now-true Windowed argument, and `00b0f3a7` calls the D3D11 constructor
+    at `00a23cfc` instead of taking the DirectDraw-exclusive branch.
+
+  A second fresh profile, `build/task14-fullscreen-inspect-profile`, was
+  seeded identically and run under read-only LLDB inspection. Breakpoints
+  in `chunk_123.c` resolved to lines 9201 and 9846, corresponding to the
+  two branch tests. `build/task14-fullscreen-inspect.log` records:
+
+  | Observation | Before `00b0f0ac` | At `00b0f374` |
+  | --- | --- | --- |
+  | Windows major/minor | 6 / 1 | — |
+  | Windows-7 flag | 1 | — |
+  | Windowed argument | **0** | **1** |
+  | ForceD3DFullscreen | 1 | — |
+  | Emulated-fullscreen flag | — | 1 |
+
+  No guest values were changed. After disabling the breakpoints, this run
+  also reaches the missing D3D11 module and exits **0**. Its own Siege.log
+  was read and contains the same FormShow exception. This establishes the
+  blocking branch with the requested seed and Play-only input; it is not
+  inferred from an old profile or a mistaken checkmark click.
+
+  **Step 3 classification:** raw `BitBlt|StretchBlt` and
+  `Surface.*::Blt|Flip` line counts in the final log are **28** and **23**.
+  With `RECOMP_IMPORT_STATS=1`, these include the inventory of exports that
+  were never called. Counting only `[recomp] ->` entries gives **8 GDI
+  BitBlt/StretchBlt calls** and **0 surface Blt/Flip calls**. SetDisplayMode,
+  CreateSurface and MFStartup also have **0 calls**. There are **0 SEH chain
+  violations**. GetAttachedSurface, Lock/Unlock, BltFast and Flip are not
+  reached; pixel-format consistency, the compositor and menu font rendering
+  cannot yet be evaluated. There is no failing DirectDraw method to repair
+  under this task's rules, and no new kit regression or kit commit is warranted.
+
+  **Image acceptance fails:** the newly produced
+  `build/smoke/smoke_main-menu_present.ppm` was copied to
+  `build/smoke/main-menu.ppm` and converted to `main-menu.png`. The PNG is
+  **800x600 with 1 distinct colour**. Visual inspection shows a solid black
+  rectangle, with no title artwork or menu items. Older captures were moved
+  to `build/task14-before-fullscreen-smoke` before the run. The debugger run
+  has a separate dump directory and did not overwrite the authoritative image.
+
+  **Recorded follow-ups, not implemented here:** the supplied
+  `engine/AniDemo.pas:1588-1590` calls `DFXInit(AppPath)` without checking its
+  result. `graphics/digifx.pas:170-185,286-337,421-428` describes the
+  StartupLibrary function table, register arguments EAX/EBX/ECX/EDX/ESI/EDI,
+  carry-flag error return, and DrawRLE/DrawBitplane/DrawRect slots. Task 15
+  needs the native DigiFX driver module using the private Dfx_p6s.dll
+  decompile and this contract. Missing drivers are not the observed startup
+  failure in these runs. Separately, `graphics/DXRender.pas:682-685` allocates
+  executable memory and `7967-7991` calls the generated blend code through
+  EAX; `graphics/DXEffects.pas:147,228` uses dxrCopyRectBlend. Tasks 15/16
+  should replace dxrCopyRectBlend and related operations with native overrides
+  registered through the kit's hook mechanism from a game-repository mod,
+  keeping addresses and game-specific facts here. No source was copied into
+  the kit and no generated blend code was executed by new port code.
+
+  **Validation (macOS, from the game root):**
+
+  ```sh
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/build-smoke.log 2>&1
+  RECOMP_LOG=2 RECOMP_IMPORT_STATS=1 RECOMP_PROFILE_DIR=$PWD/build/task14-fullscreen-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 .venv/bin/python - <<'PY' > build/run-smoke.log 2>&1
+  import subprocess, sys
+  try:
+      r = subprocess.run(['build/recomp/pop_smoke'], timeout=90)
+      print('Smoke exit:', r.returncode, flush=True)
+      sys.exit(r.returncode if r.returncode >= 0 else 128-r.returncode)
+  except subprocess.TimeoutExpired:
+      print('Smoke stopped after 90 seconds', flush=True)
+      sys.exit(124)
+  PY
+  cp build/smoke/smoke_main-menu_present.ppm build/smoke/main-menu.ppm
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/main-menu.ppm build/smoke/main-menu.png
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); n = len(set(im.getdata())); print(im.size, n, flush=True); assert im.size == (800, 600) and n > 1000, 'Task 14 image acceptance failed'" > build/task14-fullscreen-acceptance.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-fullscreen-config.log 2>&1
+  .venv/bin/python build/task14-fullscreen-binary.py > build/task14-fullscreen-binary.log
+  ```
+
+  Build exit **0**, tail `ninja: no work to do.` Smoke exit **0**, tail
+  `all expectations met` / `Smoke exit: 0`. Conversion exits **0** and prints
+  `(800x600)`. Image assertion exits **1**, tail `(800, 600) 1` and
+  `AssertionError: Task 14 image acceptance failed`. Config/literal checks
+  exit **0**, **9 passed in 0.08s**. The ignored binary-disassembly helper
+  exits **0** and confirms the pinned hash. The LLDB command, run with the
+  same script/mode/drawable switches but its separate profile/dump directory,
+  was `lldb --batch -s build/task14-fullscreen-inspect.lldb -- build/recomp/pop_smoke`
+  through a 90-second subprocess wrapper; tail `Process ... exited with
+  status = 0` / `LLDB exit: 0`. Native and translator suites were not run:
+  neither native code nor translation rules changed. Linux, Windows and iOS
+  were not built.
+
+  **Deviations and boundary:** the mode list stays `800x600x16` because the
+  kit parser accepts only 8/16 bpp; dump filenames retain the host's
+  `smoke_<name>_present.ppm` convention and are normalized explicitly. The
+  requested source-based route does not apply to the pinned build. The
+  executable, Windows 6.1 setting, generated code and kit pointer (`000acd9`
+  on `siege-delphi`) remain unchanged. No kit fix, module alias, renderer
+  implementation, guest patch or hook was added to bypass that mismatch.
+  The success changelog sentence is withheld because the menu does not draw.
+  **Stopped at the task's scope boundary: a renderer/mode decision for the
+  pinned binary is required before DirectDraw-exclusive acceptance is possible.**

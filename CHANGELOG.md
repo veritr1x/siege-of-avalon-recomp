@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Task 14: a documented fullscreen smoke seed now disables both movies and
+  requests system DirectDraw. Play preserves `Windowed=0`, but the pinned
+  executable retains a Windows-7 override that is commented out in the supplied
+  source. It still selects unsupported D3D11; the main-menu capture is black.
+
 - Task 14: DirectDraw device enumeration now preserves the guest stack,
   and returning constructor helpers transfer SEH checkpoints to their callers
   (kit `siege-delphi` 000acd9). The corrupted chain and cleanup abort are

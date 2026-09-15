@@ -1,15 +1,18 @@
 # From process start through the startup settings form to the main menu.
 # Coordinates are guest pixels read from the 800x600 startup-form dump.
-# Play is at form client (460,353); the checkmark toggles fullscreen.
-# Use a fresh smoke-only profile. Unsupported media-session creation now
-# follows the game's own no-video path; no ShowIntro override is needed.
-# game.toml reports Windows 6.1 to select the system DirectDraw module.
-#   mkdir -p build/task14-menu-profile build/smoke
+# Play is at form client (460,353), guest screen (584,450).
+# Click Play only: the checkmark means fullscreen, not windowed
+# (interface/SoAOSExtSetting.pas:541,769-773). The seed disables both movies
+# and requests exclusive system DirectDraw; game.toml keeps Windows 6.1.
+# Create a new smoke-only profile and copy the seed into its write tier:
+#   mkdir -p build/smoke
+#   mkdir build/task14-fullscreen-profile && cp smoke/siege.ini build/task14-fullscreen-profile/siege.ini
+# If that profile already exists, choose a new name in all commands below.
 # dump writes smoke_<name>_present.ppm in the dump directory.
 # A startup-form dump alone is not menu acceptance; initialization must reach
 # the second dump without a runtime abort. Use RECOMP_LOG=2 for the SEH trace.
 #   RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/smoke \
-#   RECOMP_PROFILE_DIR=$PWD/build/task14-menu-profile \
+#   RECOMP_PROFILE_DIR=$PWD/build/task14-fullscreen-profile \
 #   RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke
 # The kit's DirectDraw mode parser accepts 8/16 bpp; a list with 32 is rejected.
 # After a successful run, normalize the menu capture for the image check:
@@ -17,8 +20,9 @@
 #   .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/main-menu.ppm build/smoke/main-menu.png
 # A clean exit and a dump do not establish menu acceptance. Check the image:
 #   .venv/bin/python -c "from PIL import Image; im=Image.open('build/smoke/main-menu.png'); n=len(set(im.getdata())); print(im.size,n); assert im.size==(800,600) and n>1000"
-# Windows 6.1 currently forces the game's D3D11 fullscreen path even with
-# ForceD3DFullscreen=0. The current menu dump is black; see docs/analysis.md.
+# Current blocker: the pinned binary retains a Windows-7 fullscreen override
+# absent from the supplied source's active code. Even with this seed, it
+# changes Windowed to true internally and the menu dump is black; see docs/analysis.md.
 wait 6000
 dump startup-form
 click left 584 450
