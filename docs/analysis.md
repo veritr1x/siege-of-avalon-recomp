@@ -5898,3 +5898,66 @@ The port draws DirectDraw itself and cannot load a Windows DLL. With
 `0073061c`, a try-frame restore, before the main menu. The defaults
 (`customddrawdll=false`, `AltCursor=false`) are what the port needs; the kit
 has no way yet to serve a program's wrapper name as its own DirectDraw.
+
+## The intro movie hang, and which build this is (2026-09-15)
+
+**Hang on Play with movies on.** With `ShowIntro=true` the game plays the
+intro through Media Foundation: `LoadLibrary("mf.dll")`, then
+`MFCreateMediaSession`, which the kit answers `E_NOTIMPL`. The game logs the
+failure with a JCL stack trace (`IsBadReadPtr` walks, `GetModuleFileNameW`,
+`Siege.jdbg`, `LoadLibrary("imagehlp.dll")`) and never comes back: the app
+spins at 99% CPU in the same `fn_0060ce9c`/`fn_004332a4` chain seen when
+`DrawThemeTextEx` was missing, and `pop_smoke` overflows its stack. A copy of
+the user's profile with only `ShowIntro`/`ShowOutro` set to false reaches the
+main menu at 1920x1080; with them true it hangs whatever the DirectDraw
+settings. Workaround applied to the play profile (backup
+`siege.ini.before-movies-off`). Open: movie playback, and the stack-trace
+path hanging instead of reporting.
+
+**The pinned exe is labelled 1.17.1.** `Siege.exe` (SHA-256 `645eaa1e...`,
+the patch's `SiegeGoG.exe`, dated 2025-06-09) carries the launcher caption
+`1.17.1` in its form resource, although the patch's `VersionNumber.txt`
+says 1.19. `Siege_old2.exe` and `Siege_UnspezifischeVersion.exe` (identical,
+22,083,369 bytes, dated 2026-01-31 like `SoAMods.exe`) carry the caption
+`1.19` and are packed with MPRESS. Their provenance - the patch archive or
+the SoAMods updater run - is not established; the archive is not on disk.
+Everything this log calls "1.19" so far is the 1.17.1-labelled executable.
+
+## Hover lag, saving and loading, sound, and the movie player (2026-09-16)
+
+**Hover lag.** A creator hover script under `RECOMP_PROFILE=1` put 57% of
+guest time (23.8 s) in `FUN_0064d444`, a DXR draw that locks the destination
+surface, blends with `FN_0064cf88` (already native), and unlocks. A native
+sample put it in `Surface_Unlock`: every final Unlock of a surface whose
+pointer the game keeps hashed the whole surface a byte at a time, and the
+shadow copy and diff zero-filled full-size buffers. Kit `041f251` hashes
+eight bytes a step, reuses shadow buffers and diffs only the changed row
+band: 23.8 s became 4.6 s on the same script, `dx_tests` unchanged, the
+frames equal where the hover state matches.
+
+**Saving and loading work.** Route for 1.19 (`world.script`'s creator
+clicks, then tutorial "no" at 463,336, the journal closed at 765,585, and
+Corvus's conversation clicked through at 330 x 164..236): the level writes
+`games/Start of Level.sav`; Escape opens the main menu; LOAD (400,112) lists
+the save and loads it (log: "Loading saved game", map, scene, scripts);
+SAVE (400,156) then SAVE (620,474) and "yes" (446,190) overwrites it (log:
+"Saving game", screenshot) and the Load list shows it.
+
+**Sound.** FMOD 3 is live: in the level the game loads 59 wav samples and
+calls `FSOUND_PlaySound` 39 times, which the kit mixes on the host. Music
+starts only when a map script runs `Main.CueTune` (FMOD MP3 stream, or
+soundlib MIDI when a mode flag is 1); the tested part of the Outer Keep cued
+none. The kit's SoundFont lookup names only Populous's `POPFIGHT.SF2`, so the
+MIDI path is silent for this game.
+
+**Movies.** 1.19 plays `SiegeOpening.wmv`/`SiegeClosing.wmv` through its
+`MfPlayer` unit (about 160 functions): delay-imported `MFCreateSourceResolver`,
+`MFCreateTopology`, `MFCreateTopologyNode`, `MFCreateAudioRendererActivate`,
+`MFCreateVideoRendererActivate`, `MFCreateMediaSession`, `MFGetService`. The
+exe holds the IIDs of IMFMediaSession, IMFTopologyNode,
+IMFVideoDisplayControl, MR_VIDEO_RENDER_SERVICE, MR_STREAM_VOLUME_SERVICE,
+IMFMediaEventGenerator, IMFAsyncCallback, IMFGetService,
+IMFAudioStreamVolume, IMFPresentationClock and the topology-node attributes.
+The kit answers E_NOTIMPL, which is what hangs Play when movies are on.
+FFmpeg is now configured with WMV1-3/VC-1, WMA1/2/Pro and MP3 decoders and
+the ASF/MP3 demuxers (uncommitted); the Media Foundation objects are next.
