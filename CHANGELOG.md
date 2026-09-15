@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 14: DirectDraw device enumeration now preserves the guest stack,
+  and returning constructor helpers transfer SEH checkpoints to their callers
+  (kit `siege-delphi` 000acd9). The corrupted chain and cleanup abort are
+  resolved. Windows 6.1 still forces the game's unsupported D3D11 fullscreen
+  path; the main-menu capture is black and does not pass acceptance.
+
 - Task 14: imported-module handles, MUI language queries and VCL platform
   probes now allow startup to reach system DirectDraw (kit `siege-delphi`
   62636cd). DirectDraw creation and cooperative-level setup succeed, but a

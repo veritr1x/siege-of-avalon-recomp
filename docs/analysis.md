@@ -4542,3 +4542,232 @@ UTF-16 records rather than C strings.
   linker common-section alignment warning. The pinned executable, game
   configuration and player saves were unchanged. No private inputs, generated
   code, binaries or logs were committed, and nothing was pushed.
+
+- **2026-09-15 — Task 14 continuation: constructor checkpoints and the
+  corrupted chain repaired; menu blocked by forced D3D11 fullscreen.**
+  The regenerated smoke host now completes the script and exits **0**. The
+  D3D11 delay-load exception reaches the game's outer handler without an SEH
+  abort. However, `build/smoke/main-menu.png` is entirely black: **800x600,
+  1 distinct colour**. Task 14 acceptance remains unmet. A successful script
+  exit does not establish that the main menu draws.
+
+  **Kit commits on `siege-delphi`:**
+
+  | Commit | Change |
+  | --- | --- |
+  | `cad3664` | SEH: diagnose the first invalid guest chain boundary |
+  | `a7e36c0` | Translator: recognize standalone POP FS chain restores |
+  | `94b0068` | DirectDraw: serve wide and extended device enumeration |
+  | `674d860` | SEH: adopt escaping helper frames in their live callers |
+  | `000acd9` | SEH: keep optional checkpoint setjmp in its controlling expression |
+
+  **The first corrupting transition was an unresolved enumeration call.**
+  The new `RECOMP_LOG=2` validator checks the FS chain at import entry/exit
+  and SEH enter/leave/raise/unwind/interception. Links must be aligned,
+  inside the guest stack, strictly increasing, and terminate at
+  `ffffffff` within 64 links. It reports the first violation with the
+  preceding valid boundary, import name where applicable, EIP and ESP.
+  The authoritative diagnostic run is `build/task14-chain-smoke-2.log`
+  (exit **6**, after the diagnostic build completed), whose first failure
+  is:
+
+  ```text
+  SEH chain violation: link outside guest stack at leave  EIP=00b0f1e2 ESP=0efffa38 head=00b0ed6c previous=00000000 link=00b0ed6c stack=0ef00000..0f000000; last valid: leave  EIP=00b3497c ESP=0efff9e8 head=0efffa38
+  ```
+
+  PE bytes show `00b0f157` pushing the callback `00b0ed6c`, followed by
+  `CALL EAX` at `00b0f163`. The other two arguments are the callback context
+  and flags. LLDB (`build/task14-enum-inspect.log`) stopped immediately
+  before this call: EAX and the function slot `00c11850` were zero, ESP was
+  `0efffa2c`, and FS:[0] was the valid registration `0efffa38`. The stack
+  began `00b0ed6c 01d8bc80 00000001 0efffa44`. The slot is populated from
+  GetProcAddress at `00a1ba8d`; the UTF-16 name at `00a1bd5c` is
+  `DirectDrawEnumerateExA`.
+
+  The null-call fallback consumed only its return address, leaving the
+  three stdcall arguments on the stack. Consequently, the cleanup POPs at
+  `00b0f1df`–`00b0f1e1` consumed those arguments, and `MOV FS:[EAX],EDX`
+  at `00b0f1e2` installed the callback address as the chain head. The later
+  writer of `00b0ed6c` into the constructor record at `0efff9fc` was
+  `MOV [ECX],EBX` at `00809527`: it copied an already corrupt head. This
+  supersedes the earlier hypothesis that constructor re-raise itself first
+  damaged the link. Unknown-call logging deduplicates target zero, which
+  hid this later call behind an earlier optional Galaxy lookup failure.
+
+  The DirectDraw shim now registers DirectDrawEnumerateW and
+  DirectDrawEnumerateExA/W alongside the existing ANSI entry point. It
+  enumerates the primary display with correctly encoded strings, a null
+  primary GUID, and a null monitor argument for the extended callback.
+  Regressions cover callback argument count, context, stack cleanup, string
+  encoding and invalid flags. The five-argument callback uses the existing
+  `guest_call` argument-array overload. Its contract follows Microsoft's
+  [DirectDrawEnumerateExA documentation](https://learn.microsoft.com/en-us/windows/win32/api/ddraw/nf-ddraw-directdrawenumerateexa)
+  and [callback documentation](https://learn.microsoft.com/en-us/windows/win32/api/ddraw/nc-ddraw-lpddenumcallbackexa).
+
+  **Constructor ownership follows the actual executable.** The proposed
+  XOR/POP/JMP constructor and unlink prefixes are absent from this PE
+  (both XOR encodings checked). The actual helper in
+  `analysis/decompiled/Siege.exe/functions/00809514.asm` saves EDX/ECX/EBX,
+  computes `ECX=ESP+10`, fills a caller-reserved registration, publishes it
+  with `MOV FS:[EDX],ECX` at `00809536`, restores those registers and RETs.
+  Its handler is `0080953d`; the landing at `00809542` calls destruction
+  and the re-raise helper. `0080956c.asm` is the AfterConstruction helper:
+  it establishes a temporary frame, invokes the virtual method and unlinks
+  with `POP FS:[0]` at `0080958f`, then `ADD ESP,8` and returns. The helper
+  at `00809564` invokes the destruction virtual method. The cleanup/re-raise
+  code near `0080a42c` and `0080a480` was checked against PE bytes as well.
+
+  Driver tests also cover the requested general `XOR EDX,EDX; POP ECX;
+  POP FS:[EDX]; ADD ESP,8; JMP ECX` unlink form, including rejection when
+  the FS base is provably nonzero. Existing POP-then-JMP return emission
+  preserves intervening pushes; no additional ESP adjustment was needed.
+
+  The translator now identifies helper return paths that leave their own
+  registration linked, marks those records orphaned before the helper's
+  host return, and emits adoption immediately after direct calls to marked
+  helpers. Adoption gives the record a checkpoint in its live caller;
+  interception rejects an orphan's expired checkpoint. Registration identity
+  comes from the published FS head, which handles records reserved above
+  the helper's current ESP. The native regression installs in a helper,
+  returns, raises in a deeper call, completes the caller's landing exactly
+  once, and verifies clean standalone unlink and an empty record stack.
+  Conditional no-install paths and duplicate adoption are also covered.
+  The SEH spec records this ownership contract. The optional checkpoint
+  uses nested `if (b_) { if (setjmp(*b_)) ... }` statements so setjmp is
+  the controlling expression, rather than a logical-AND operand.
+
+  **Fresh regenerated runs locate the remaining rendering boundary.**
+  `build/task14-adoption-smoke.log` uses a new empty smoke-only profile.
+  DirectDrawEnumerateExA, DirectDrawCreate, QueryInterface for the original
+  IDirectDraw interface and SetCooperativeLevel all succeed. The corrected
+  leave at `00b0f1e2` has ESP `0efffa44`. The trace shows constructor
+  registration `0efffa08` entered at `00809536`, orphaned by the helper and
+  adopted by its caller. The later D3D11 delay-load exception runs the
+  constructor cleanup, re-raises and completes the outer FormShow handler.
+  The game's own log records `Main.FormShow External exception C06D007E`.
+
+  A second fresh profile, `build/task14-ddraw-profile`, explicitly sets:
+
+  ```ini
+  [Settings]
+  ForceD3DFullscreen=0
+  Windowed=0
+  ScreenResolution=600
+  ```
+
+  It produces the same black frame and D3D11 attempt
+  (`build/task14-ddraw-smoke.log`, exit **0**). These settings were private
+  diagnostic inputs; no player profile was changed or committed. LLDB
+  (`build/task14-mode-inspect.log`) confirms why the override fails. Before
+  the branch at `00b0f0ac`, the game sees Windows major **6**, minor **1**,
+  its Windows-7 flag is **1**, its windowed argument is **0**, and
+  ForceD3DFullscreen is **0**. Nevertheless, the Windows-7/fullscreen branch
+  at `00b0f0cc` sets the emulated-fullscreen flag and changes the argument
+  to **1**. At `00b0f374` both are **1**, selecting the D3D11 constructor
+  through `00b0f3a7` → `00a23cfc`.
+
+  The listing `00a235cc.asm` calls `00a1e688` at `00a236e7`; the latter
+  thunk's delay import is D3D11CreateDeviceAndSwapChain. The constructor
+  expects device, swap-chain and context objects and calls their methods.
+  Thus this is a rendering dependency, not another optional Win32 query.
+  Windows 6.1 selects system DirectDraw but also forces this game's D3D11
+  fullscreen path. Choosing a different supported game mode or implementing
+  that renderer needs a rendering decision. No fabricated D3D11 success,
+  executable patch or Windows-version change was used to bypass it.
+
+  | Run log | First chain violations | BitBlt / StretchBlt lines | Surface Blt / Flip lines | CreateSurface lines |
+  | --- | ---: | ---: | ---: | ---: |
+  | `task14-chain-smoke-2.log` | 1 | 24 | 0 | 0 |
+  | `task14-adoption-smoke.log` | 0 | 24 | 0 | 0 |
+  | `task14-ddraw-smoke.log` | 0 | 24 | 0 | 0 |
+
+  The 24 GDI lines draw the startup form. There is no DirectDraw menu
+  surface to present or composite yet. The existing startup PNG-skin
+  transparency and settings-text defects remain deferred: guest TPngImage,
+  AlphaBlend's premultiplied path and 32-bpp CreateDIBSection/StretchDIBits
+  remain investigation leads. Menu font rendering has not been reached.
+
+  **Validation, from the game root (macOS):** each regression was added and
+  run before its implementation. These are the exact test commands; all
+  red logs exit **1**, all green/final logs exit **0**.
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-chain-diagnostic-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-chain-diagnostic-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-pop-restore-red.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-pop-restore-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-ddraw-enum-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-ddraw-enum-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-adoption-translator-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-adoption-native-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-adoption-native-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py kit/tools/recomp/tests/test_translate_driver.py kit/tools/recomp/tests/test_translate_insns.py > build/task14-adoption-translator-green.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-adoption-guard-red.log 2>&1
+  .venv/bin/python -m pytest -q kit/tools/recomp/tests/test_translate_seh.py > build/task14-adoption-guard-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py seh_tests --verbose > build/task14-adoption-guard-native.log 2>&1
+  .venv/bin/python build/task-k1-native.py runtime_tests --verbose > build/task14-final-runtime.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14-final-dx.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14-game-config.log 2>&1
+  ```
+
+  | Regression | Red result | Green/final result |
+  | --- | --- | --- |
+  | Chain diagnostic | 240 checks, 7 failures | 261 checks, 0 failures |
+  | POP restore | 1 failed, 18 passed | 19 passed |
+  | Enumeration | 138902 checks, 3 failures | 139117 checks, 0 failures |
+  | Adoption translator | 2 failed, 19 passed | Combined translator suites: 213 passed |
+  | Adoption native | Compile failed: 5 undeclared new-API errors | 303 checks, 0 failures |
+  | setjmp guard | 1 failed, 20 passed | 21 passed; native 303 checks, 0 failures |
+  | Final runtime | — | 1086 checks, 0 failures, 1 existing skip |
+  | Final DirectDraw | — | 139117 checks, 0 failures |
+  | Game config / game literals | — | 9 passed |
+
+  The adoption native red result is a missing-API compile failure, not an
+  executed assertion failure. The runtime skip remains the existing
+  image-with-no-data-imports case. The approved ignored native selector is
+  necessary because the root test wrapper lacks `-R`; it uses the kit's
+  build/test entry points. No compiler was invoked directly.
+
+  ```sh
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/task14-chain-diagnostic-build.log 2>&1
+  .venv/bin/python tools/build.py --regenerate --target smoke --jobs 8 > build/task14-adoption-regenerate.log 2>&1
+  mkdir -p build/task14-adoption-profile build/task14-adoption-smoke
+  RECOMP_LOG=2 RECOMP_PROFILE_DIR=$PWD/build/task14-adoption-profile RECOMP_SCRIPT=$PWD/smoke/main-menu.script RECOMP_HOST_DUMP_DIR=$PWD/build/task14-adoption-smoke RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 .venv/bin/python - <<'PY' > build/task14-adoption-smoke.log 2>&1
+  import subprocess,sys
+  try:
+      result = subprocess.run(['build/recomp/pop_smoke'], timeout=90)
+      print('Smoke exit:', result.returncode, flush=True)
+      sys.exit(result.returncode if result.returncode >= 0 else 128-result.returncode)
+  except subprocess.TimeoutExpired:
+      print('Smoke stopped after 90 seconds', flush=True)
+      sys.exit(124)
+  PY
+  cp build/task14-adoption-smoke/smoke_main-menu_present.ppm build/smoke/main-menu.ppm
+  .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/main-menu.ppm build/smoke/main-menu.png
+  .venv/bin/python -c "from PIL import Image; im = Image.open('build/smoke/main-menu.png'); n = len(set(im.getdata())); print(im.size, n, flush=True); assert im.size == (800, 600) and n > 1000" > build/task14-final-acceptance.log 2>&1
+  ```
+
+  Both completed builds exit **0**. Regeneration translates **29091/29185
+  functions**, produces **42630 entry points** in **147 chunks**, withdraws
+  94 guessed data blocks, and covers **246/246 jump tables, 3346 entries,
+  zero missing dispatch slots and zero undecoded sites**. Translation takes
+  732.8 seconds; the final link retains the existing common-section
+  alignment warning. An earlier regeneration was deliberately stopped to
+  fix the setjmp guard before restarting this successful build.
+
+  The default-profile smoke tail is `all expectations met` and `Smoke exit:
+  0`; the same command with `task14-ddraw-profile`, `task14-ddraw-smoke` and
+  `task14-ddraw-smoke.log` reproduces that result with the explicit INI.
+  Conversion succeeds, but the image assertion exits **1**, printing
+  `(800, 600) 1` and `AssertionError`. Visual inspection confirms a solid
+  black rectangle with no title, artwork or menu items. The script now
+  documents this distinction. Its Play click remains `(584,450)` and its
+  mode list remains `800x600x16`, since the current parser rejects 32 bpp.
+
+  Before every kit commit, formatting processed 272 handwritten source
+  files; source-boundary/documentation checks, game-literal checks and
+  whitespace checks passed. The pinned executable hash is unchanged.
+  Linux, Windows and iOS were not built in this session. No generated code,
+  private assets, player saves, binaries or run logs are committed; nothing
+  was pushed. **Open boundary: resolve the forced D3D11 fullscreen path
+  before claiming a DirectDraw main-menu frame.**

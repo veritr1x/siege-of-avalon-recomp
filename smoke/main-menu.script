@@ -14,6 +14,11 @@
 # The kit's DirectDraw mode parser accepts 8/16 bpp; a list with 32 is rejected.
 # After a successful run, normalize the menu capture for the image check:
 #   cp build/smoke/smoke_main-menu_present.ppm build/smoke/main-menu.ppm
+#   .venv/bin/python kit/tools/recomp/ppm_to_png.py build/smoke/main-menu.ppm build/smoke/main-menu.png
+# A clean exit and a dump do not establish menu acceptance. Check the image:
+#   .venv/bin/python -c "from PIL import Image; im=Image.open('build/smoke/main-menu.png'); n=len(set(im.getdata())); print(im.size,n); assert im.size==(800,600) and n>1000"
+# Windows 6.1 currently forces the game's D3D11 fullscreen path even with
+# ForceD3DFullscreen=0. The current menu dump is black; see docs/analysis.md.
 wait 6000
 dump startup-form
 click left 584 450
