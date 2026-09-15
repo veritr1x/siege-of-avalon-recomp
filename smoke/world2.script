@@ -1,0 +1,30 @@
+# As world.script, then leave the opening journal and look at the world.
+wait 6000
+click left 584 450
+wait 7000
+click left 400 68
+wait 8000
+click left 372 146
+wait 2500
+click left 525 115
+wait 1000
+click left 525 217
+wait 1500
+click left 372 100
+wait 1000
+key N down
+key N up
+key Y down
+key Y up
+key P down
+key P up
+wait 1500
+click left 610 470
+wait 9000
+dump journal
+click left 765 585
+wait 6000
+dump world-a
+wait 6000
+dump world-b
+wait 3000
