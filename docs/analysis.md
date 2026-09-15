@@ -4936,3 +4936,171 @@ UTF-16 records rather than C strings.
   The success changelog sentence is withheld because the menu does not draw.
   **Stopped at the task's scope boundary: a renderer/mode decision for the
   pinned binary is required before DirectDraw-exclusive acceptance is possible.**
+
+- **2026-09-15 — Task 14b: software Direct3D 11 presents; DigiFX blocks the menu.**
+
+  **Scope and source:** implemented the approved D3D11 2D subset in the kit
+  submodule on `siege-delphi`. The authoritative source for this run is
+  `analysis/source/sneg-build` at **417cbd0**, not the comparison fork under
+  `analysis/source/soa`. Read `graphics/D3DRenderer.pas`, `D3DShader.pas`,
+  `D3DMesh.pas`, `engine/D3DMousePtr.pas`, and `SoAOS.Animation.pas`'s
+  surface-creation and initialization paths before implementation. The pinned
+  executable's SHA-256 was checked again before the smoke run and remains
+  `0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b`.
+
+  **Kit commits, each following failing tests and green native suites:**
+
+  - `8ea1eee` — `dx: Direct3D 11 module scaffolding`: four delay-load modules,
+    SDK-sized COM tables, cleared back buffer, tagged shader blobs and matrix
+    arithmetic. Unused methods log and return `E_NOTIMPL`.
+  - `baf3eb6` — `dx: Direct3D 11 resources and the quad pipeline`: guest-memory
+    resources, pitched/boxed uploads, views, state, input layout, validated
+    shader tags, transformed indexed triangles, sampling and alpha blending.
+    Tests use the source's quad ordering and destination/source matrices,
+    including cropped UVs and a shared triangle edge blended exactly once.
+  - `4f414ec` — `dx: present Direct3D 11 frames through the display seam`:
+    owned-window composition, immutable presented snapshots, frame counting,
+    fullscreen drawable sizing, resize/release cleanup, smoke frame-file and
+    interactive host mailbox coverage.
+
+  **Adaptations established from source and the pinned binary:** the HLSL is
+  in `D3DRenderer.pas`; `D3DShader.pas` declares the 20-byte vertex layout
+  (`POSITION` float3 at offset 0, `TEXCOORD` float2 at offset 12). Exact shader
+  strings and layout are recorded in the kit source, with LGPL attribution.
+  The main layer uploads **R16_UNORM** and uses `fragment_shader_R16_int` to
+  decode packed 565 after sampling; the cursor uses RGBA8 and the ordinary
+  sample shader. BGRA8 and B5G6R5 resources are also covered. `D3DCompile`
+  produces source tags, not executable shader bytecode; shader creation
+  rejects unknown source hashes, targets or entry points. The live run's
+  hashes match the three supported sources: vertex `148f2b3ecca795cb`, normal
+  pixel `e55fa4c2afc9ddb6`, R16 pixel `d70f8e9650a037da`.
+
+  The optional device query is **IDXGIDevice**; `E_NOINTERFACE` follows the
+  source's tolerated path. The SDK tables have **43 device, 115 context and
+  18 swap-chain slots including inherited methods**. The plan's D3DX cdecl
+  assumption is incorrect for this executable: calls at `00a2484d`,
+  `00a24896`, `00a248af`, `00a248c9`, and `00a248e3` in the verified
+  `functions/00a2479c.asm` listing have no caller argument cleanup. The
+  exports therefore use **stdcall**, four arguments for translation/scaling
+  and three for multiplication, while retaining row-vector arithmetic and
+  returning the guest output pointer. A stack-balance test was changed first,
+  failed against cdecl, and passed after correcting the exports.
+
+  **Native validation (macOS, from the game root):** the authorized ignored
+  `build/task-k1-native.py` configures the macOS preset and builds/tests the
+  selected target through the kit's build/test wrappers. No compiler was
+  invoked directly. These are the exact runs and their result lines:
+
+  ```sh
+  .venv/bin/python build/task-k1-native.py dx_tests > build/task14b-step1-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14b-step1-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests > build/task14b-step1-headless.log 2>&1
+  .venv/bin/python build/task-k1-native.py host_tests > build/task14b-step1-host.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests > build/task14b-step2-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests > build/task14b-d3dx-abi-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests > build/task14b-step2-bounds-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14b-step2-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests > build/task14b-step2-headless.log 2>&1
+  .venv/bin/python build/task-k1-native.py host_tests > build/task14b-step2-host.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests > build/task14b-step3-headless-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py host_tests > build/task14b-step3-host-red.log 2>&1
+  .venv/bin/python build/task-k1-native.py headless_tests --verbose > build/task14b-step3-headless-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py host_tests --verbose > build/task14b-step3-host-green.log 2>&1
+  .venv/bin/python build/task-k1-native.py dx_tests --verbose > build/task14b-step3-dx-green.log 2>&1
+  .venv/bin/python -m pytest -q tests kit/tests/test_game_literals.py > build/task14b-config.log 2>&1
+  ```
+
+  | Run/log suffix | Result |
+  | --- | --- |
+  | step1-red | 139122 checks, 5 failures (missing modules) |
+  | step1-green | 139195 checks, 0 failures |
+  | step1-headless / step1-host | Each: 100% tests passed, 0 tests failed out of 1 |
+  | step2-red | 139241 checks, 6 failures (resources/viewport) |
+  | d3dx-abi-red | 139540 checks, 16 failures (stack cleanup) |
+  | step2-bounds-red | 139816 checks, 2 failures (NaN sampler accepted) |
+  | step2-green | 139862 checks, 0 failures |
+  | step2-headless / step2-host | Each: 100% tests passed, 0 tests failed out of 1 |
+  | step3-headless-red | 108 checks, 9 failures (composition/output/resize) |
+  | step3-host-red | 3958941 checks, 2 failures (frame not sealed) |
+  | step3-headless-green | 108 checks, 0 failures |
+  | step3-host-green | 3936861 checks, 0 failures; all host tests passed |
+  | step3-dx-green | 139862 checks, 0 failures; all dx tests passed |
+  | config | 9 passed in 0.09s |
+
+  All green native commands exit **0** and end with `100% tests passed,
+  0 tests failed out of 1`; red commands fail as intended. Before each kit
+  commit, `.venv/bin/python kit/tools/format.py --write`,
+  `.venv/bin/python kit/tools/check_game_literals.py`,
+  `.venv/bin/python kit/tools/check_repo.py`, and
+  `git -C kit diff --cached --check` passed. Linux, Windows and iOS were not
+  built; these results establish macOS native behavior only.
+
+  **Step 4 live smoke:** rebuilt with the new kit, then ran the unchanged
+  `smoke/main-menu.script` against a fresh profile seeded from
+  `smoke/siege.ini`. `Windowed=False` and `windows_version = "6.1"` remain
+  unchanged. The ignored runner checks the pinned hash, creates new profile
+  and dump directories (refusing existing ones), copies the seed, and launches
+  `build/recomp/pop_smoke` with a 90-second timeout and these switches:
+  `RECOMP_LOG=2`, `RECOMP_IMPORT_STATS=1`,
+  `RECOMP_PROFILE_DIR=build/task14b-first-profile`,
+  `RECOMP_SCRIPT=smoke/main-menu.script`,
+  `RECOMP_HOST_DUMP_DIR=build/task14b-first-smoke`,
+  `RECOMP_DDRAW_MODES=800x600x16`, `RECOMP_SMOKE_DRAWABLE=800x600`
+  (the path values are resolved from the repository root).
+
+  ```sh
+  .venv/bin/python tools/build.py --target smoke --jobs 8 > build/task14b-build-smoke.log 2>&1
+  .venv/bin/python build/task14b-run-smoke.py first > build/task14b-first-smoke.log 2>&1
+  ```
+
+  Build exits **0**, linking `pop_smoke`, with existing C-linkage/alignment
+  warnings. Smoke exits **5**, not a script pass. Its actual `[recomp] ->`
+  calls (excluding the import inventory) establish:
+
+  - `SetCooperativeLevel(hwnd, 0x8)` (`DDSCL_NORMAL`) succeeds once.
+  - D3D11 device/swap-chain creation succeeds at **800x600, RGBA8**, with
+    DXGI `Windowed=0` for the emulated-fullscreen presenter.
+  - Four successful 16-bit offscreen DirectDraw surfaces: two at 800x600,
+    the map buffer at 768x544, and the work buffer at 384x160.
+  - Two `Blt`, two `Lock`, two `Unlock`, two `UpdateSubresource`, five
+    `DrawIndexed`, and **five swap-chain Present calls** occur. `BltFast`
+    is not reached. There are no logged SEH chain violations.
+
+  The game's own `build/task14b-first-profile/Siege.log` ends with:
+
+  ```text
+  Creating map buffer
+  768 x 544
+  Map buffer created in VRAM
+  Creating work buffer
+  DX initialization complete
+  Using 565 Driver
+  Loading cursor
+  Initializing DFX...
+  ```
+
+  **Observed blocker:** `LoadLibraryW` finds no implemented module for
+  `dfx_p5s.dll` or `dfx_p6s.dll` and returns zero for both. The pinned
+  `graphics/digifx.pas` initializes `DriversCnt` to zero and increments it
+  only after a successful driver load and `StartupLibrary`/`DLL_GetInfo`
+  handshake; it nevertheless returns success when no drivers loaded.
+  `digifxEnumDrivers` and `digifxLoadDriver` use a DWORD loop bound
+  `DriversCnt - 1`. Direct disassembly from the pinned PE confirms that
+  the latter at `00a3328e` loads the count, decrements it, and proceeds into
+  table traversal; its `TEST ESI,ESI; JB` cannot reject the zero-count
+  underflow. The generated instructions match this sequence. The final
+  host message is `SIGSEGV in guest thread 1: EIP=00a332ac ESP=0efffb20
+  EBP=646ba8c0`, within that driver-selection path. This is after successful
+  DX initialization, not a missing kernel32/user32 export. Providing the
+  DigiFX function-table/register ABI is the separate driver work identified
+  in the preceding run's follow-ups; no fake driver or guest patch was added.
+
+  **Image acceptance is not met:** the fresh dump directory contains only
+  `smoke_startup-form_present.ppm`. The crash occurs before the script's
+  main-menu capture, so no main-menu image was produced or substituted from
+  an older run. Native tests prove quad pixels, blending, composition and
+  frame-file output; the live run proves renderer initialization and presents,
+  not the title screen, gameplay, or performance. **Stopped at the DigiFX
+  scope boundary.** No additional kit fix was made after the three green
+  commits; the game repository pins `4f414ec` and records this incomplete
+  main-menu milestone.

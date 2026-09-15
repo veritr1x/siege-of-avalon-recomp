@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 14b: the kit's software Direct3D 11 presenter now initializes, uploads
+  the game's 16-bit surfaces and presents frames through the host display seam
+  (`siege-delphi` 4f414ec). Native quad, alpha-blend and frame-file checks pass.
+  The seeded smoke run reaches five presents, then crashes during DigiFX driver
+  initialization; the title-screen main menu is still blocked.
+
 - Task 14: a documented fullscreen smoke seed now disables both movies and
   requests system DirectDraw. Play preserves `Windowed=0`, but the pinned
   executable retains a Windows-7 override that is commented out in the supplied
