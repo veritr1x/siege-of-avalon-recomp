@@ -5797,3 +5797,67 @@ whole layer on a new toolchain before the game draws a frame; the kit already
 provides it, and 1.19 runs through the menus, the whole creator and into the
 first level. Recommendation recorded: continue the recompilation, and use the
 source as the map it was tonight.
+
+## The launcher's value fields (2026-09-15)
+
+The launcher's Monitor, Resolution, Language, Brightness and DirectDraw
+fields are `TStaticText`, which is a Windows `STATIC` control, and all five
+were blank. Five causes, found one under another, all in the kit:
+
+1. **No `STATIC` class.** The VCL subclasses it through `GetClassInfoW`;
+   the lookup failed and the control fell back to `DefWindowProc`, which
+   draws nothing.
+2. **Never shown.** The VCL shows a child control with
+   `SetWindowPos(SWP_SHOWWINDOW)`, which the kit ignored, so no control was
+   ever visible or asked to paint.
+3. **Painted over.** A child DC writes into the form's surface, and the
+   form repainting (hovering Play swaps its image) covered the fields; the
+   form has `WS_CLIPCHILDREN`, which the kit did not honour.
+4. **See-through boxes.** The form is a layered window keyed on fuchsia
+   (`Color = clFuchsia`, `TransparentColor = True`). With visual styles
+   off, the VCL fills a static control with the form's colour - a hole in
+   the window - and draws black text in it. `Siege.exe` carries a
+   Common-Controls 6 manifest, so on Windows styles are on and the VCL
+   instead calls `DrawThemeParentBackground`, which paints the parchment
+   behind the text. The kit now reports styles on, with no theme data,
+   and comctl32 6.10 when the manifest binds it; the first try crashed on
+   `DrawThemeTextEx`, a delay-loaded export the VCL raises for when it is
+   missing (JCL then overflowed the stack building a trace, looking for
+   `Siege.jdbg`), so every uxtheme export the exe names is present.
+5. **Painted into the wrong DC.** With the parchment in place the fields
+   were still black: a trace of the Language field's centre pixel showed
+   the parchment landing and then a second DC on the same control turning
+   it fuchsia. The form is `DoubleBuffered`, so the VCL paints a control
+   into a memory DC with `WM_PAINT` carrying that DC, and copies it over
+   the window; the kit's `STATIC` procedure painted the window instead.
+
+**Result.** `smoke/launcher-fields.script` dumps all five values on the
+parchment (`Nothing`, `Display 1 - Runtime display`, `800 x 600
+(Original)`, `Czech`, `0`), unchanged after hovering Play, and the Language
+arrow turns `Czech` into `Spanish`. Main menu and the 26-frame creator run
+are unchanged; their one exception line is the known nil callback at
+`00653efd`. Every kit suite is green. The values are drawn in the kit's
+fixed 8x16 font, not the launcher's BlackChancery: the kit has no font
+rasteriser.
+
+**What each launcher option does** (`SoAOSExtSetting.pas`; all are written
+to `siege.ini` by Play):
+
+- *Fullscreen* - the inverse of `Windowed`; forced on while Blue Pixel Fix
+  is on.
+- *Blue Pixel Fix* - `AltCursor`; turns CustomDDraw on and picks
+  `ddraw_Win10.dll` ("BPF1") when present, else "Nothing".
+- *CustomDDraw* and the arrow beside it - `CustomDDrawDLL` and
+  `DDrawVersion`, which DirectDraw DLL the game loads.
+- *Proton, Winlator, etc.* - `ExperimentalProton`; forces CustomDDraw with
+  `None`, and renames `wined3d.dll`/`libwine.dll` out of the way.
+- *Big Font* - `UseSmallFont` (the name is inverted); *Scale Journal* -
+  `ScaleJournalFullHD`; *Disable Movies* - `Showintro`/`Showoutro`;
+  *Disable Event* - `DisableEvent`.
+- *Monitor*, *Resolution*, *Language*, *Brightness* - the arrows cycle each
+  list.
+- *Remap Keys* - the `[keyboard]` bindings panel.
+- *Update* downloads the patch from siege-of-avalon.org and *Play Alt
+  Version* runs `SoAMods.exe`, a Windows executable; neither can work in
+  the port. The kit draws DirectDraw itself, so the DirectDraw-DLL choices
+  are not expected to change how the port draws; that is untested.

@@ -1,0 +1,15 @@
+# The launcher's value fields (Monitor, Resolution, Language, Brightness and
+# the DirectDraw choice) are Windows STATIC controls. Dump them as drawn, after
+# hovering Play (which repaints the form under them), and after the Language
+# right arrow has changed one.
+wait 6000
+dump fields
+move 584 450
+wait 700
+move 300 540
+wait 700
+dump hover
+click left 427 441
+wait 700
+dump language
+wait 300
