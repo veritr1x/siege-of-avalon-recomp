@@ -17,17 +17,17 @@ name = "Siege of Avalon: Anthology"
 app_name = "SiegeOfAvalonRecomp"
 bundle_id = "dev.recompkit.siege"
 executable = "Siege.exe"
-sha256 = "0c028b582632129a43ea67da6040ecc5d78a14e3bba06fcd2e4071b06a9ebd5b"
-# Delphi links at 0x00800000, not the 0x00400000 the kit's other games use;
-# the kit takes the base from here (RECOMP_IMAGE_BASE) and loads without
-# relocating, which this image allows (no dynamic-base flag).
-image_base = 0x00800000
-entry_point = 0x00bfea40
+sha256 = "645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847"
+# The community 1.19 patch's GOG executable (SiegeGoG.exe, 2025-06-09) links
+# at the usual 0x00400000; the kit takes the base from here
+# (RECOMP_IMAGE_BASE) and loads without relocating, which this image allows.
+image_base = 0x00400000
+entry_point = 0x00841ff8
 guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 # Where a developer checkout finds the game, relative to the repository root.
 # tools/setup.py links your installation here; an innoextract of the GOG
 # installer placed here directly is accepted too.
-developer_exe = "original/gog/Siege.exe"
+developer_exe = "original/patched/Siege.exe"
 # The game selects system DirectDraw on Windows 6.1 (default build 7601).
 windows_version = "6.1"
 # The arena grows past the kit's 256 MB so Dfx_p6s.dll maps at its preferred
@@ -39,7 +39,7 @@ guest_size = 0x10100000
 # second guest image; LoadLibrary("Dfx_p6s.dll") hands out its base.
 [modules.aux.dfx]
 name = "Dfx_p6s.dll"
-path = "original/gog/Dfx_p6s.dll"
+path = "original/patched/Dfx_p6s.dll"
 sha256 = "cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13"
 base = 0x10000000
 size = 0x28000
@@ -52,29 +52,13 @@ function_alignment = 1
 function_alignment = 4
 # Ghidra listing directory holding functions.tsv and functions/*.asm,
 # relative to the repository root. tools/analyze.py exports them.
-listings = "analysis/decompiled/Siege.exe"
+listings = "analysis/decompiled/Siege.exe-1.19"
 # Curated symbols, relative to this directory.
 globals = "globals.toml"
-# Native replacements for translated functions. The generated sources include
-# this header before they define FN_<addr>: it replaces the software blend the
-# game compiles at run time, which translated code cannot execute.
-overrides = "native/dxr_blend.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
-animation_counter = 0x00d06e00
+animation_counter = 0x00a36e00
 volatile_reads = []
-# A function Ghidra's listing does not start: a standard Delphi prologue
-# (55 8B EC 53 56 57, then the register-convention arguments) sitting in a gap
-# behind a string constant, which is what breaks the listing's run of code.
-# The Escape key reaches it - the string before it ends "KeyDown" - and it
-# arrived as a "call to unknown target", where returning zero leaves the
-# caller's stack unbalanced and the guest faults a few returns later.
-#
-# Only this one. Ten other addresses seen as unknown targets in older run logs
-# were tried together and cost the build two dangling dispatch targets: naming
-# an entry moves the boundaries discovery settles on, so each one has to earn
-# its place by fixing something.
-entry_points = [0x00bd0ee0]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the
@@ -83,23 +67,23 @@ entry_points = [0x00bd0ee0]
 # that game's draw-loop waits. This game imports GetTickCount and
 # QueryPerformanceCounter and paces with timeSetEvent; no wait site has been
 # identified.
-frame_clock_begin = 0x00d06e10
-frame_clock_wait = 0x00d06e14
-frame_clock_wait_clamp = 0x00d06e18
-frame_clock_clamp_deadline = 0x00d06e20
-frame_clock_wait_deadline = 0x00d06e24
+frame_clock_begin = 0x00a36e10
+frame_clock_wait = 0x00a36e14
+frame_clock_wait_clamp = 0x00a36e18
+frame_clock_clamp_deadline = 0x00a36e20
+frame_clock_wait_deadline = 0x00a36e24
 # dx/ddraw.cpp: mouse-pointer surface globals, for a host-drawn pointer. Not
 # identified; the game draws its own cursor from ArtLib sprites.
-cursor_surface_ptrs = [0x00d06e30, 0x00d06e34]
+cursor_surface_ptrs = [0x00a36e30, 0x00a36e34]
 # host/input_gate.cpp: a DirectInput mouse device and its vtable. This game
 # imports no DirectInput; the VCL delivers mouse input as window messages,
 # so these will never be real.
-mouse_vtable = 0x00d06e40
-mouse_device_ptr = 0x00d06e44
-mouse_device_right = 0x00d06e48
+mouse_vtable = 0x00a36e40
+mouse_device_ptr = 0x00a36e44
+mouse_device_right = 0x00a36e48
 # host/smoke_main.cpp: the camera record the smoke script inspects. Not
 # identified.
-camera = 0x00d06e50
+camera = 0x00a36e50
 
 [touch]
 # "auto" shows the on-screen keypad when no hardware keyboard is attached.
