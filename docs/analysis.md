@@ -5536,3 +5536,64 @@ lookup is not a registry: no instruction anywhere loads a chunk class's VMT
 as an immediate, so the classes are never registered and the decision must be
 made inline. Finding that comparison is the next step, and reading what the
 guest actually has in the four bytes at that moment is what settles it.
+
+### The startup PNG, found (2026-09-15)
+
+The four eliminations above were right, and the cause was none of the
+remaining candidates either. The registry the reader consults was never
+built, because the unit that builds it was never initialized - along with
+190 of the program's 376 units.
+
+**How it was pinned down.** A verbose-level log of every handled
+`RaiseException` with its frame chain (kit) put the raise inside the chunk
+loop in a two-kilobyte gap Ghidra never listed; the chunk name it read was
+`IHDR`, correctly converted, and `GetChunkClass` returned the base class
+because the registry global at `0x8f9da8` was nil. Temporary probes in a
+shim the runtime calls hundreds of times showed the global nil from the
+first sample to the raise, the PNG unit's once-counter never decremented,
+and `InitCount` at `0x854bac` frozen at 186 of 376.
+
+**The cause.** Unit 185's initialization builds ANSI case tables by calling
+`CharUpperBuffA` and `CharLowerBuffA` for every byte value. Neither had a
+shim. An import the kit does not know is called with its arguments left on
+the stack - it cannot know how many there were - and the trace shows the
+consequence directly: consecutive calls at ESP `dba0`, `db90`, `db80`, the
+stack sinking sixteen bytes per iteration. The unit's epilogue then popped
+garbage into EBX, ESI and EDI; EDI was `InitUnits`' unit count; the loop's
+`CMP EDI,EBX` failed at 186 and the walk ended. The very next log line had
+already said so: `SEH chain violation ... EIP=0040b57d`, which is
+`InitUnits`' exit path.
+
+**The fix.** Kit shims for `CharUpperBuffA`, `CharLowerBuffA`,
+`GetStringTypeExA`, `GetStringTypeExW` and `FlushInstructionCache` - each
+surfaced by the runtime's own "unknown stdcall argument count" line once the
+previous one was in place. All 376 units now initialize, the registry is
+created, and the startup form draws in full: parchment, logo, and every one
+of the 1.19 options. No PNG dialog.
+
+**A general lesson recorded for the kit.** A missing stdcall import is not a
+missing feature, it is stack corruption at a distance, and the runtime's
+"unknown stdcall argument count" warning is the thing to grep for first on
+any new image.
+
+**Result.** `smoke/form-only.script` and `smoke/main-menu.script` both exit 0
+with every expectation met. `build/png9-smoke/smoke_form_present.ppm` is the
+1.19 launcher complete - parchment, logo, and all of its options: Blue Pixel
+Fix, CustomDDraw, Big Font, Scale Journal, Disable Event, Disable Movies,
+Monitor, Resolution, Fullscreen, Language, Brightness, Play Alt Version,
+Play. `build/p119h-smoke/smoke_main-menu_present.ppm` is the main menu with
+the patch's Trophies and Help buttons. A sixth shim, `LoadCursorFromFileW`,
+came out of the main-menu run the same way.
+
+**Open.** One `call to unknown target 00000000` remains, from `00653efd`:
+`PUSH 0x653fe8; PUSH 0x65402c; CALL dword ptr [ESI]; ADD ESP,8` - a
+two-argument cdecl call through a function pointer that is nil. Its shape
+is a C-runtime or library callback, not a Delphi method; which pointer, and
+who was meant to set it, is the next question on this image.
+
+**The gate that should have fired.** `runtime_tests` carries three checks
+that every import the pinned image names has a known argument count. They
+were green on the 2021 image and red the moment the pin moved to 1.19 - 21
+imports, `CharLowerBuffA` among them - and nobody read them. That gate is
+the whole lesson in one line: on any new image, run it before the first
+smoke. All 21 are named now and it is green.
