@@ -16,12 +16,15 @@ name = "Siege of Avalon: Anthology"
 app_name = "SiegeOfAvalonRecomp"
 bundle_id = "dev.recompkit.siege"
 executable = "Siege.exe"
-sha256 = "645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847"
-# The community 1.19 patch's GOG executable (SiegeGoG.exe, 2025-06-09) links
-# at the usual 0x00400000; the kit takes the base from here
+sha256 = "8c1fa17e17dbb6654d4fc9e81ca76394324000e34092c4ff466c2239e098fdcf"
+# The community 1.19 patch's own Siege.exe (2026-01-31), whose launcher reads
+# 1.19: an ordinary Delphi image - 4.6 MB of code and a 16 MB JCL .debug
+# section - linked at 0x00800000. The kit takes the base from here
 # (RECOMP_IMAGE_BASE) and loads without relocating, which this image allows.
-image_base = 0x00400000
-entry_point = 0x00841ff8
+# The patch's SiegeGoG.exe, pinned until 2026-09-16, is the same game built
+# for GOG but labelled 1.17.1.
+image_base = 0x00800000
+entry_point = 0x00c79198
 guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 # Where a developer checkout finds the game, relative to the repository root.
 # tools/setup.py links your installation here; an innoextract of the GOG
@@ -31,6 +34,11 @@ developer_exe = "original/patched/Siege.exe"
 windows_version = "6.1"
 # The arena grows past the kit's 256 MB so Dfx_p6s.dll maps at its preferred
 # base 0x10000000 (no relocation support; Ghidra cannot rebase the listing).
+# The 1.19 image is 21.8 MB - 4.6 MB of code and a 16 MB JCL .debug section -
+# so it ends at 0x01dc0000, above the kit's default heap start of 0x01000000.
+# The arena keeps everything above that: rounding to the next 2 MB rather than
+# to 32 MB leaves the heap the size the runtime's own tests expect of it.
+heap_base = 0x01e00000
 guest_size = 0x10100000
 
 # DigiFX, the sprite RLE/blit library every draw path calls through
@@ -51,11 +59,14 @@ function_alignment = 1
 function_alignment = 4
 # Ghidra listing directory holding functions.tsv and functions/*.asm,
 # relative to the repository root. tools/analyze.py exports them.
-listings = "analysis/decompiled/Siege.exe-1.19"
+listings = "analysis/decompiled/Siege.exe-1.19-patch"
 # Curated symbols, relative to this directory.
 globals = "globals.toml"
 # Native replacements for translated functions: the software blend the game
 # compiles at run time, which translated code cannot execute.
+# Disabled 2026-09-16 while the pin moves to the patch's own 1.19 exe: the
+# header names FN_0064cf88, the 1.17.1 build's dxrCopyRectBlend, and this
+# image links elsewhere. Re-point it once the function is located again.
 overrides = "native/dxr_blend.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
@@ -80,7 +91,21 @@ volatile_reads = []
 # 0x00667242, took that jump for a dispatch that went nowhere and withdrew
 # the block; the call then returned zero into a JMP EAX trampoline. Named as
 # an entry it is decoded whole.
-entry_points = [0x00412250, 0x00664a28]
+# Functions no recovery pass reaches: absent from the Ghidra listing, named by
+# no data pointer, and only ever called indirectly. A run that needs one says
+# so - "call to unknown target <addr>" - and that address goes here.
+#
+# 00c2bd8c is a Delphi method in the unlisted gap that follows FUN_00c2bbc4
+# (which ends at 00c2bd89, then three bytes of LEA EAX,[EAX+0x0] padding). It
+# is four-byte aligned and opens PUSH EBP / MOV EBP,ESP / ADD ESP,-0x54, and
+# the caller that needs it returns to 00c2e98b. The 1.17.1 pin wanted
+# 00412250 and 00664a28 for the same reason; neither address is this
+# function, so both left with the pin move on 2026-09-16.
+#
+# 00994fe8 is the same shape - four-byte aligned, PUSH EBP / MOV EBP,ESP /
+# PUSH ECX / PUSH EBX / PUSH ESI / PUSH EDI, after a RET and one MOV EAX,EAX
+# of padding - and the menus, the character creator and a level all reach it.
+entry_points = [0x00994fe8, 0x00c2bd8c]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the

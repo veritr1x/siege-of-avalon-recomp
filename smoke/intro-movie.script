@@ -1,0 +1,33 @@
+# The opening cinematic, through Media Foundation.
+#
+# The seed for this one keeps ShowIntro on, which is what makes AniDemo build
+# a media session at all; every other smoke profile turns it off because the
+# session used to return E_NOTIMPL and the JCL trace recursed on the failure.
+# Coordinates are the startup form's, as in main-menu.script: Play is at guest
+# screen (584,450).
+#
+#   mkdir -p build/movie-smoke build/movie-profile
+#   cp smoke/siege-movies.ini build/movie-profile/siege.ini
+#   RECOMP_SCRIPT=$PWD/smoke/intro-movie.script RECOMP_HOST_DUMP_DIR=$PWD/build/movie-smoke \
+#   RECOMP_PROFILE_DIR=$PWD/build/movie-profile \
+#   RECOMP_DDRAW_MODES=800x600x16 RECOMP_SMOKE_DRAWABLE=800x600 build/recomp/pop_smoke
+#
+# Movies/SiegeOpening.wmv is 22 MB of WMV: VC-1 video and WMA audio, both of
+# which the vendored FFmpeg decodes. A frame of it is a picture with hundreds
+# of colours; a black dump means the session never presented.
+# The opening fades up from black: at four seconds the picture is real but
+# every channel is still under the host's non-black threshold, so the dumps
+# are timed onto the lit part of the film instead of its fade-in.
+wait 6000
+dump startup-form
+click left 584 450
+wait 4000
+dump movie-early
+wait 9000
+dump movie-mid
+wait 5000
+dump movie-late
+key ESCAPE down
+key ESCAPE up
+wait 4000
+dump after-movie

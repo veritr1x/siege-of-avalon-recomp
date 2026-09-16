@@ -32,18 +32,20 @@ class SiegeConfigTests(unittest.TestCase):
     def test_identity(self):
         self.assertEqual(self.cfg["game"]["id"], "siege")
         self.assertEqual(self.cfg["game"]["executable"], "Siege.exe")
-        # The community 1.19 patch's GOG executable, 2025-06-09.
+        # The community 1.19 patch's own Siege.exe, 2026-01-31, whose launcher
+        # reads 1.19; its SiegeGoG.exe, pinned until 2026-09-16, read 1.17.1.
         self.assertEqual(self.cfg["game"]["sha256"],
-                         "645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847")
-        self.assertEqual(self.cfg["game"]["image_base"], 0x00400000)
-        self.assertEqual(self.cfg["game"]["entry_point"], 0x00841FF8)
-        self.assertIn("#define RECOMP_IMAGE_BASE 0x00400000", self.header)
+                         "8c1fa17e17dbb6654d4fc9e81ca76394324000e34092c4ff466c2239e098fdcf")
+        self.assertEqual(self.cfg["game"]["image_base"], 0x00800000)
+        self.assertEqual(self.cfg["game"]["entry_point"], 0x00C79198)
+        self.assertIn("#define RECOMP_IMAGE_BASE 0x00800000", self.header)
+        self.assertEqual(self.cfg["game"]["heap_base"], 0x01E00000)
         self.assertIn('#define RECOMP_APP_NAME "SiegeOfAvalonRecomp"', self.header)
         self.assertIn('#define RECOMP_EXECUTABLE "Siege.exe"', self.header)
         self.assertIn('#define RECOMP_GUEST_ROOT "C:\\\\GOG Games\\\\Siege of Avalon - Anthology"', self.header)
         self.assertEqual(self.cfg["developer_exe_path"], (ROOT / "original/patched/Siege.exe").resolve())
         self.assertEqual(self.cfg["listings_path"],
-                         (ROOT / "analysis/decompiled/Siege.exe-1.19").resolve())
+                         (ROOT / "analysis/decompiled/Siege.exe-1.19-patch").resolve())
 
     def test_every_kit_macro_is_rendered(self):
         for macro in ("RECOMP_HOOK_FRAME_CLOCK_BEGIN", "RECOMP_HOOK_FRAME_CLOCK_WAIT",

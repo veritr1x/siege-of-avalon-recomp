@@ -201,7 +201,10 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
     }
 }
 
-// dxrCopyRectBlend, at 0x0064cf88.
+// dxrCopyRectBlend, at 0x00a52780 in the patch's 1.19 build (0x0064cf88 in
+// the 1.17.1 one it was found in). The recompile changed its register
+// allocation, not its shape: the same 180-instruction body, reached from the
+// same draw that locks the destination, blends, and unlocks.
 //
 // Delphi's register convention: Self-less unit procedure, so the first three
 // parameters arrive in EAX, EDX and ECX and the rest on the stack, pushed
@@ -235,4 +238,4 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
     recomp_return(c);
 }
 
-#define FN_0064cf88 siege_dxr_copy_rect_blend
+#define FN_00a52780 siege_dxr_copy_rect_blend

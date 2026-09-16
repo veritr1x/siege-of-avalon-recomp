@@ -5961,3 +5961,92 @@ IMFAudioStreamVolume, IMFPresentationClock and the topology-node attributes.
 The kit answers E_NOTIMPL, which is what hangs Play when movies are on.
 FFmpeg is now configured with WMV1-3/VC-1, WMA1/2/Pro and MP3 decoders and
 the ASF/MP3 demuxers (uncommitted); the Media Foundation objects are next.
+
+## The creator's lists, and the pin moves to the patch's own 1.19 (2026-09-16)
+
+**Training style could not be chosen.** In the app, the creator's pop-up
+lists opened and every click on an entry was ignored; the same clicks in
+`pop_smoke` at 1920x1080 selected Scout and Magician. The trace
+(`RECOMP_TRACE_POINTER=1`) showed each press and release delivered, at the
+right guest coordinates, consumed by nothing. The difference was the desktop:
+the app's launcher runs at the kit's default 1024x768 and the game then goes
+to 1920x1080 through a fullscreen DXGI swap chain, which set the host's
+display mode but not the one USER32 reports - `win32_display_mode` knew only
+about DirectDraw modes. The game lays its dialogs out and hit-tests against
+`GetSystemMetrics`, so everything beyond x=1023 - which is where these lists
+sit - was unreachable. Reproduced by running the smoke with
+`RECOMP_SMOKE_DRAWABLE=1024x768`: the click fails; at 1920x1080 it works.
+Kit `b50e02c` adds `dxgi_display_mode` as a source for `win32_display_mode`,
+ahead of the DirectDraw one and cleared when the swap chain leaves
+fullscreen, with a `dx_tests` case. The reproducing run then selects Scout.
+
+**1.19 for real.** The patch ships four executables. `SiegeGoG.exe`
+(5,792,256 bytes, 2025-06-09), pinned until now, carries the launcher caption
+1.17.1; the patch's own `Siege.exe` (22,083,369 bytes, 2026-01-31) carries
+1.19. It is an ordinary Delphi image - 4.6 MB of code, a 16 MB JCL `.debug`
+section, no packer, the same imports - linked at 0x00800000 with its entry at
+0x00c79198. The game data in `original/patched` was already the patch's.
+`game.toml` now pins it (SHA-256 `8c1fa17e...`), with `heap_base` raised to
+0x01e00000 because the image ends at 0x01dc0000, above the kit's default
+0x01000000 heap start; 0x01e00000 keeps the arena above the runtime tests'
+own floor. The old executable stays as `original/patched/Siege-1.17.1.exe`.
+Ghidra exported 10,076 functions into `analysis/decompiled/Siege.exe-1.19-patch`
+(the script names its directory after the imported file, so it was renamed
+into place). `native/dxr_blend.h` is disabled meanwhile: it replaces
+`FN_0064cf88`, the old build's `dxrCopyRectBlend`, and not one 16-byte prefix
+of that function appears in the new image - it was recompiled, so the
+replacement has to be located again before it can come back.
+
+**1.19 boots, and the movies play.** Two functions no recovery pass reaches
+are now named in `game.toml` `entry_points`: `00c2bd8c` (a Delphi method in
+the gap after `FUN_00c2bbc4`, which ends at `00c2bd89` and is followed by
+three bytes of `LEA EAX,[EAX+0x0]` padding) and `00994fe8` (same shape, after
+a `RET` and one `MOV EAX,EAX`). Both were found by running the game - "call to
+unknown target" names the address - and ten smoke scripts now report no
+address beyond them except `00000000`, the nil virtual call at `00b56e7c`
+that still wedges the deeper scripts and predates this work. `00994fe8` is
+declared but the translator still does not emit it: the address is interior to
+`FUN_00994f54`, whose recovered body runs well past its 78 listed bytes, so it
+is reached as that function's code rather than as an entry of its own. It
+returns 0 and the menus, `play-1024` and `quick-click` runs are unaffected.
+The main menu renders (816 colours, 99.7% non-black) and `native/dxr_blend.h`
+is enabled again: 1.19's `dxrCopyRectBlend` is `00a52780`, confirmed by its
+shape - `RET 0x14`, five stack parameters, `SrcRect` read from `[EBP+0x18]` -
+and the menu is pixel-unchanged with it on. Enabling an override needs only a
+reconfigure, not a retranslation: the generated `funcs.h` always carries the
+`#ifdef RECOMP_OVERRIDE_HEADER` include and CMake supplies the macro.
+
+**The movies.** `Movies/SiegeOpening.wmv` and `SiegeClosing.wmv` are 1920x1080
+**MP43 (msmpeg4v3)** video with WMA v2 audio, 30.3 s and 77.9 s - not VC-1, so
+the vendored FFmpeg could not have decoded them whatever the Media Foundation
+layer did; `msmpeg4v1,v2,v3` are now in the build. The player's contract was
+read out of the image rather than guessed: the delay imports land at
+`00c1ffe4..00c20074`, their callers sit in `00c20000-00c23000` (all of it in
+Ghidra's unlisted gaps), and the vtable slots decode as `CreateObjectFromURL`,
+`CreatePresentationDescriptor`, `GetStreamDescriptorByIndex`/`GetMajorType`,
+`SetUnknown` x3 + `AddNode`, `SetObject` + `SetUINT32` x2 + `AddNode`,
+`BeginGetEvent`, `SetTopology`, `GetSessionCapabilities`, `GetClock`,
+`GetUINT64(MF_PD_DURATION)` and `SetVideoWindow`; the handler at `00c227fc`
+switches on 101..108 and `Invoke` at `00c21bac` signals its wait handle on
+106, `MESessionClosed`. Three defects had to be cleared in order. The first
+killed the process: `ole32!PropVariantClear` had no shim, and a missing delay
+import raises 0xC06D007F - `2 of 8` script steps, `ExitProcess(0)`, an
+"Externe Exception" box. The second was mine: presenting at the file's
+1920x1080 into an 800x600 mode tripped the smoke host's
+`pointer_space` assertion, and would have mis-mapped the cursor in the real
+host too, since host pointer coordinates are mapped back through the last
+presented frame. The third was the interesting one: with the frames fitted and
+the guest's presents standing aside, every frame still arrived *blank* -
+`RECOMP_PRESENT_TRACE` counted `527 800x600 16bpp blank` against
+`358 32bpp picture` - because the presenters run `gdi_composite_windows` over
+the frame, and the game leaves its own window black for the renderer to draw
+into. Gating that too turned the census into `514 16bpp picture` (13 blank,
+the fade-up), distinct frames 4 -> 442, presented non-black 0.005 -> 0.361 and
+every movie dump into a picture (`max=255`, 8-47% non-zero), with decode
+tracking the clock exactly (`pts == t` at every sample). Verified by
+`smoke/intro-movie.script` with `smoke/siege-movies.ini`, whose dumps are timed
+onto the lit part of the film because the opening fades up from black and the
+host counts a channel as non-black only above 8. Audio is silent under
+`pop_smoke` only - its `host_audio_stream` is a stub; the real mixer
+implements it. Movies are on again in `build/prof1-profile`
+(`siege.ini.before-movies-off` still holds the previous copy).
