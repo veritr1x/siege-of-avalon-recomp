@@ -105,7 +105,17 @@ volatile_reads = []
 # 00994fe8 is the same shape - four-byte aligned, PUSH EBP / MOV EBP,ESP /
 # PUSH ECX / PUSH EBX / PUSH ESI / PUSH EDI, after a RET and one MOV EAX,EAX
 # of padding - and the menus, the character creator and a level all reach it.
-entry_points = [0x00994fe8, 0x00c2bd8c]
+#
+# 00c63520 is a published method: a TMethod whose Code word the form fires as
+# an event (CALL [EBX+0x258] with Self in [EBX+0x25c], at 009664ed). Nothing
+# in the image names it - the .dfm binds it by NAME through RTTI, so neither
+# the data-pointer scan nor the instruction-immediate scan can see it - and it
+# sits in the 00c634dc..00c63824 gap behind a run of UTF-16 text. It opens
+# PUSH EBP / MOV EBP,ESP / ADD ESP,-0xc / MOV [EBP-8],ECX / MOV [EBP-0xc],EDX
+# / MOV [EBP-4],EAX, the three-register Delphi convention. Without it the run
+# reports "call to unknown target 00c63520" from 009664f3 and then dies on a
+# nil call at 009665c8.
+entry_points = [0x00994fe8, 0x00c2bd8c, 0x00c63520]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the

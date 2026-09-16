@@ -6050,3 +6050,129 @@ host counts a channel as non-black only above 8. Audio is silent under
 `pop_smoke` only - its `host_audio_stream` is a stub; the real mixer
 implements it. Movies are on again in `build/prof1-profile`
 (`siege.ini.before-movies-off` still holds the previous copy).
+
+Two defects behind "the launcher is black" and "I cannot see the movie" were
+found and fixed, and only the second of them was the whole story.
+
+`00994fe8`, the launcher window's procedure, was configured as an entry point
+and still absent from the translation. It was adopted at config time and
+removed during the discovery rounds: instrumenting the containers themselves
+to print a stack on removal named the path in one run - `extend_finally_body`
+read the `PUSH 0x994fe8` at `00994f7b` as naming a pushed cleanup continuation
+of the enclosing body, re-decoded the 41 instructions into it, and retired the
+configured body into an alternate, which emits no dispatch entry. For Delphi
+that PUSH is how a window procedure reaches `MakeObjectInstance`, so every
+message to that window returned zero. The translator now never absorbs or
+retires an address a table, `__initterm` or config names. The address table
+goes 143,107 -> 143,109, discovery still converges in 16 rounds, and every run
+since reports `undeliverable calls: none` where it used to name `00994fe8`.
+The form is still black, so this was a real defect on that path and not its
+cause - "the wndproc is missing" explained the symptom and did not survive the
+test of fixing it.
+
+The movie was the same shape of error in the other direction, and there the
+fix is the whole story. `MfPlayerClass.pas` does its renderer setup only from
+`MESessionTopologyStatus` - it is where `MFGetService` asks for
+`IMFVideoDisplayControl`, where `SetVideoWindow` is called, and where the
+interface every later repaint goes through is stored. This layer posted 101-108
+and that event is 111, so the field stayed nil and the player called through
+nil, which is the `00000000` undeliverable target returning to `00c22e44`:
+`GetNativeVideoSize(SIZE*, SIZE*)`, slot 3. The session now posts it with
+`MF_TOPOSTATUS_READY` once the topology names a source. The player asks for the
+service and gets it (`GetService kind=43 session=yes service=1092a86c
+iid=a490b1e4`), nothing is undeliverable, and the dumps are the film. Worth
+recording plainly: the earlier "movies play" was measured on this layer's own
+present path while the player held a nil renderer the entire time - every movie
+smoke carried that same nil call, not just the app run, which is exactly why
+the movie was not visible in the game.
+
+The launcher form is not fixed, and bucketing the verbose log's import call
+sites by instruction settled what reading the disassembly could not.
+`TWinControl.WMPaint` takes its ordinary compatible-DC path and runs it FIVE
+times, completely, for the form and its four STATIC children alike: `BeginPaint`
+at `00965599`, `CreateCompatibleBitmap` at `009655af`, `CreateCompatibleDC` at
+`009655c6`, `SelectObject`, `SetWindowOrgEx`, the `BitBlt` at `00965666`, then
+`EndPaint`, `DeleteDC`, `DeleteObject` - five of each. The form's own memory DC
+is created and is real: `BeginPaint hwnd=00020014 -> 00060043`, then
+`CreateCompatibleDC(00060043) -> 00060044`. Four of those five blits pass
+exactly the handles their own invocation just made. The form's passes `dst` a
+stack address and `src` zero.
+
+So the frame is written over between `009655c6`, which stores the memory DC at
+`[EBP-0x8]`, and `0096564e`, which reads it back as zero - `ESI`, holding the
+window DC, and the whole `ClientRect` go with it (`[EBP-0x50]` reads `0xD37BB0`).
+This is a stray write over a live stack frame, the same shape as the `00b56e7c`
+write over a live TStringList that wedges the gameplay smokes, and one
+instrument answers both: a guest-memory watchpoint that names the instruction
+doing the writing. Worth building once, for both.
+
+The launcher's own drawing is upstream of this and is fine. `fn_00c2e578` - a
+virtual, reached through a VMT slot rather than any CALL - selects a draw mode
+from `FUN_00c2f528` (a jump table on a byte at `[ESI+0x461]`), takes the mode-2
+arm into `FUN_00c2dc0c`, and that composes the parchment between two 552x406
+memory DCs (`00c2de53`, `00c2e524`). What never reaches the window is that
+composition, because the blit that would carry it is the refused one.
+
+Two readings recorded earlier were wrong and are withdrawn. "The launcher's
+wndproc is missing" explained the symptom and did not survive being fixed - it
+was a real defect on the path and not its cause. "Neither painting branch runs
+for the form" was an artifact of filtering `CreateCompatibleDC` out of the very
+trace being read; it runs, correctly, every time.
+
+The frame pointer is what the launcher loses, and two new switches found it.
+`RECOMP_WATCH` reports every write touching an address; `RECOMP_WATCH_FRAME`
+reports a guest call that returns with EBP changed, naming the call and the EIP
+the callee left off at. The watchpoint alone was not enough - on a stack slot
+most of its hits are ordinary PUSHes, and the host backtrace it prints is
+unreliable against optimised code - but the frame check is exact, and in the
+window between the form's `BeginPaint` and its refused blit it prints three
+lines and no others:
+
+    frame: 009f704c returned with EBP 0efffb1c, was 0efffb98 (left at eip=009f730a)
+    frame: 00964c20 returned with EBP 0efffb98, was 0efffc00 (left at eip=00964d27)
+    frame: 00965428 returned with EBP 0efffc00, was 0efffc80 (left at eip=00965478)
+
+Read from the bottom: `TWinControl.WMPaint` (`00965428`) has EBP `0efffc80` and
+calls itself; the inner call returns with EBP `0efffc00`, so every `[EBP-n]` the
+outer reads afterwards is 0x80 bytes adrift - `MemDC` reads 0, `ClientRect`
+reads `0xD37BB0`, the destination reads a stack address, and the blit is
+refused. Nothing overwrote memory; the frame pointer moved under it. The
+innermost loss is `recovered_009f704c`, a Delphi try/finally whose epilogue
+(`009f730a`: `POP ESI; MOV ESP,EBP; POP EBP; RET`) is reached through the
+`PUSH 0x9f730a ... POP EAX; JMP EAX` resume idiom, and `009f730a` is a known
+alternate entry, so `recomp_return`'s tail-call arm should reach it. It does
+not, and that is the next thing to settle - the fix belongs at that escape, not
+in the painting code, which is correct throughout.
+
+Measured with the switches off: menu p50 8.28 ms (120.7 fps), p95 11.14, p99
+12.01, max 13.04, zero intervals over 16.7 ms - unchanged from the 8.29/11.42/
+12.27 baseline, so a watchpoint in the write path and a compare on every call
+cost nothing when unarmed.
+
+**The launcher form draws.** The escape was in the translator, one line of
+emission. A JMP through the entry stack slot was emitted as `c->eip = X;
+return;` - a return, on the strength of a proof that establishes where the
+jumped-to value came from and never what it is. `recovered_009f7300` is two
+instructions, `POP EAX; JMP EAX`, recovered as a function of its own; it
+therefore begins at stack delta zero, and what sits there is not a return
+address but the continuation `PUSH 0x9f730a` put there several instructions
+earlier in `recovered_009f704c` - Delphi's finally idiom, `PUSH resume; CALL
+cleanup; POP EAX; JMP EAX`. Setting EIP and returning dropped that
+continuation, so `009f704c`'s epilogue (`POP ESI; MOV ESP,EBP; POP EBP; RET`)
+never ran, so EBP was never restored, so `TWinControl.PaintHandler` and then
+`WMPaint` read their locals through a frame pointer 0x80 bytes adrift, so the
+final BitBlt got a stack address for a DC and zero for its source and refused.
+The emission now ends the way a RET does, through `recomp_return`, which
+returns just as cheaply when the value really is this frame's return address
+and dispatches the block when it is not.
+
+Verified: launcher-fields dumps go from 244 colours and 0.005 non-black to
+26,656 colours and 0.435 - the parchment, the Anthology logo, the 1.19 version
+stamp, Monitor/Resolution/Fullscreen/Language/Brightness with their arrows and
+checkmarks, Update, Remap Keys, Blue Pixel Fix, Custom DDraw, Big Font, Scale
+Journal, Play Alt Version and Play. Zero refused blits, zero frame losses in
+the paint, `undeliverable calls: none`. Translation unchanged in size
+(29490/29619 functions, 48328 entry points), runtime and dx suites 22/22, the
+intro cinematic unchanged (1542/2265/471 colours on its three dumps), and the
+menu still at p50 8.27 ms = 120.9 fps, p95 11.42, p99 12.27, zero intervals
+over 16.7 ms.
