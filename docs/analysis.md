@@ -6226,3 +6226,20 @@ this game has none. Neither explains the report. The next step is a run of the
 real app with `RECOMP_FRAME_TIMINGS` and `RECOMP_PROFILE=1`, hovering until the
 lag appears and then quitting through the game's own Exit so the sampler's
 atexit report is written.
+
+**The film ends, and now so does the black after it.** Letting the opening run
+to its own end left a permanently black screen - no menu, and in a 36-minute
+play session the guest produced 729 unique frames, every one of them inside the
+first 50 seconds, which is the film. After that the presenter re-showed one
+image at 23.5 Hz for 33 minutes. The events say why: 101, 111, 103, 107 and
+then nothing - no Stop, no Close. `MESessionEnded` is a statement about the
+session and a player may ignore it; this one ignores it BY NAME
+(`MESessionEnded : hr := S_OK`). What ends playback is `MEEndOfPresentation`
+(211), whose handler calls `Stop()` and posts `MFP_PLAYBACK_ENDED` to the window
+that owns the film. Raising it before `MESessionEnded` gives the full sequence -
+101, 111, 103, 211, 107, 106 - and the main menu comes back.
+
+It stayed hidden because every movie smoke pressed Escape before its
+after-movie dump, so the natural end had never once been exercised; behind a
+movie that was not visible anyway, nobody noticed. The Escape path still works
+and always did, which is the A/B that separated the two.
