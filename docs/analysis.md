@@ -6271,3 +6271,49 @@ one pathological refresh cannot buy an unbounded deadline. Pacing still asks for
 the nominal maximum, so nothing stops the panel climbing back. The regression
 test fails without the change - the third frame is declared lost and raises a
 fault - and passes with it.
+
+## Hover lag was the rasterizer; the dead half of the creator was a 1024-wide form (2026-09-16)
+
+Two complaints from play, both in the character creator on the 1.19 pin in
+fullscreen: hovering the training points lagged, and the training-style list,
+its OK area and the Continue button took no clicks while the appearance boxes
+took them fine.
+
+The lag first. `RECOMP_FRAME_TIMINGS` split by the `repeat` column shows the
+presenter putting out 120 frames a second of which only 30-37 per two seconds
+were new - the guest painted about 17 times a second, focused or not. The
+completion-fallback stretches that looked like the stutter aligned exactly
+with the host state trace (`RECOMP_TRACE_POINTER` now stamps focus, occlusion
+and capture transitions on the same clock): every one began at a focus loss or
+window occlusion and ended at the focus gain, so they were the terminal in
+front of the game, not the game. A `sample` of the live process settled it:
+85% of the main thread sat in the kit's software D3D11 rasterizer -
+`raster_triangle` -> `sample` -> `dx11::pixel`/`put_pixel` - shading the
+game's 1920x1080 present quad one float channel at a time, about 60 ms a
+frame. The 1.19 engine (D3DRenderer.pas) presents its DirectDraw frame as an
+R16_UNORM texture through the packed-565 decode shader, linear sampler,
+identity source rect, so the quad is texel-for-pixel. The kit's rasterizer now
+copies rows for that case (kit `Direct3D 11 rasterizer copies texel rows`);
+the creator runs at 30-75 real frames a second and `raster_triangle` is gone
+from the profile, leaving the 32x32 blended cursor quad as the only generic
+draw.
+
+The clicks were measured, not inferred, on the second pass. `RECOMP_LOG=2`
+logs each routed mouse message and every SetWindowPos: the game's main window
+`00020030` - the swap chain's output window - was 1024x768 at 0,0 on a
+1920x1080 mode. `mouse_window()` routes by window bounds and drops a point
+outside every window, so x >= 1024 reached nothing. With the creator's 800-wide
+layout centred by (560, 240), the appearance boxes sit at x 839-962 and the
+training box, its OK area and Continue at 1025-1260: exactly the split the
+player saw. The form took 1024x768 from GetSystemMetrics before any mode
+existed; on Windows the desktop is already 1920x1080, and DXGI resizes a
+fullscreen chain's output window to the mode besides. The kit's DXGI now does
+that resize through the SetWindowPos path, and restores the bounds on leaving
+fullscreen.
+
+Reverted along the way: the windowed-mode edits in `dx/dxgi.cpp` and
+`host/present.cpp` from the earlier session, none of which landed; windowed
+mode is still cropped and stays an open item. `build.py` wants `--game-dir .`
+from this repository - without it the kit's stub game is built, which has no
+app target.
+
