@@ -6243,3 +6243,31 @@ It stayed hidden because every movie smoke pressed Escape before its
 after-movie dump, so the natural end had never once been exercised; behind a
 movie that was not visible anyway, nobody noticed. The Escape path still works
 and always did, which is the A/B that separated the two.
+
+**The hover lag was the presenter, and the number named it.** A live session
+while hovering the character creator's training points splits cleanly in two:
+smooth stretches at 118 presents/s with p95 8.3 ms, laggy ones at 37 presents/s
+with p95 42 ms, and the SAME amount of new content in both (~16-18 unique
+frames/s). The discriminating column is `display_ack`, which the writer defines
+as "not a completion fallback": 1 for all 2347 smooth frames, 0 for all 552
+laggy ones. So in the slow stretches every single frame missed the drawable's
+acknowledgement and was shown by the fallback. The GPU was busy 0.14-0.29 ms
+throughout, and the log carries "GPU completion timed out" beside it, so the
+callbacks were late, not the work.
+
+`acknowledgement_grace()` was `(flight_limit + 2) * frame_period` = 5 x 8.33 ms
+= 41.67 ms, against a measured seal-to-submit of 41.68 ms: each frame sat out
+the entire grace. `frame_period` comes from `CGDisplayModeGetRefreshRate`, which
+reports what the MODE can reach, never what an adaptive panel chose this
+instant - and 120Hz to 24Hz is one step on a laptop, which is exactly the
+alternation the timings show. A slow refresh then delivers its acknowledgement
+outside a grace cut to the fast one, the frame is declared lost, the fallback
+paces presentation at the grace, the panel sees a slow client and stays slow.
+The loop sustains itself, which is why it persisted rather than blipping.
+
+The grace now follows the cadence the acknowledgements themselves show: widen
+at once when a refresh comes in slower, narrow gently after, capped at 1/15 s so
+one pathological refresh cannot buy an unbounded deadline. Pacing still asks for
+the nominal maximum, so nothing stops the panel climbing back. The regression
+test fails without the change - the third frame is declared lost and raises a
+fault - and passes with it.
