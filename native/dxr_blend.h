@@ -21,31 +21,34 @@ static inline int dxr_in_arena(uint32_t at, uint32_t n) {
     return at != 0 && at < GUEST_SIZE && n <= GUEST_SIZE - at;
 }
 
-// TDXR_Surface (graphics/DXRender.pas) is a plain Delphi record: a one-byte
-// ColorType padded to four, then the DWORD fields on their natural alignment.
-// dxrMakeRGBSurface (0x00643e60) writes them in order at +0x4..+0x30, and
-// dxrCopyRectBlend reads Width at +4 and Height at +8, which is what fixed
-// these numbers. Taken from a packed layout every field is three bytes out
-// and the blit draws nothing.
+// TDXR_Surface (graphics/DXRender.pas) is a PACKED Delphi record: a one-byte
+// ColorType with nothing padding it, then the DWORD fields three bytes off
+// every natural boundary. Read with a padded layout instead, the patch's 1.19
+// gives Width 19200, Height 2304 and BitCount 1181552640 for a font sheet that
+// is really 533x75 at 16bpp with pitch 1072 - so the blit reads nonsense and
+// draws nothing, and the training-style list, the character stat values and
+// every dimmed panel go missing while keyed BltFast text is fine. The
+// surfaces arrive on odd addresses, which is the tell. An earlier build of
+// 1.19 did pad the record; the pinned patch build does not.
 enum {
-    DXR_SURF_COLORTYPE = 0,  // 1 byte
-    DXR_SURF_WIDTH = 4,
-    DXR_SURF_HEIGHT = 8,
-    DXR_SURF_WIDTHBIT = 12,
-    DXR_SURF_HEIGHTBIT = 16,
-    DXR_SURF_WIDTH2 = 20,
-    DXR_SURF_HEIGHT2 = 24,
-    DXR_SURF_WIDTHMASK = 28,
-    DXR_SURF_HEIGHTMASK = 32,
-    DXR_SURF_BITCOUNT = 36,
-    DXR_SURF_BITS = 40,
-    DXR_SURF_PITCH = 44,
-    DXR_SURF_PITCHBIT = 48,
-    DXR_SURF_MIPMAP = 52,
+    DXR_SURF_COLORTYPE = 0,  // 1 byte, and nothing pads it
+    DXR_SURF_WIDTH = 1,
+    DXR_SURF_HEIGHT = 5,
+    DXR_SURF_WIDTHBIT = 9,
+    DXR_SURF_HEIGHTBIT = 13,
+    DXR_SURF_WIDTH2 = 17,
+    DXR_SURF_HEIGHT2 = 21,
+    DXR_SURF_WIDTHMASK = 25,
+    DXR_SURF_HEIGHTMASK = 29,
+    DXR_SURF_BITCOUNT = 33,
+    DXR_SURF_BITS = 37,
+    DXR_SURF_PITCH = 41,
+    DXR_SURF_PITCHBIT = 45,
+    DXR_SURF_MIPMAP = 49,
     // The variant part. Indexed surfaces start with an index channel; RGB
     // ones start with red. Each TDXR_ColorChannel is {Mask, BitCount, rshift,
     // lshift}, sixteen bytes.
-    DXR_SURF_CHANNELS = 56,
+    DXR_SURF_CHANNELS = 53,
     DXR_CHANNEL_STRIDE = 16,
     DXR_CHANNEL_MASK = 0,
     DXR_CHANNEL_BITCOUNT = 4,
@@ -231,6 +234,7 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
             sr[i] = (int32_t)rd32(src_rect + 4u * (uint32_t)i);
         }
         dxr_blit_blend(dst, src, dr, sr, blend, alpha, key_on != 0, key);
+
     }
     // Return as the original does: the five stack parameters go with it.
     c->r[R_ESP] = sp + 4u + 0x14u;
