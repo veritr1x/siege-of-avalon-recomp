@@ -56,14 +56,53 @@ enum {
     DXR_CHANNEL_LSHIFT = 12,
 };
 
-// TDXR_Blend, in declaration order (DXRender.pas:40). DrawAlpha uses only the
-// first two: a straight copy for an indexed destination or a fully opaque
-// alpha, and the constant-alpha blend otherwise.
+// TDXR_Blend, in declaration order (DXRender.pas:40). The game's DXEffects
+// passes four of them. DrawAlpha: a straight copy for an indexed destination
+// or a fully opaque alpha, and the constant-alpha blend otherwise. DrawSub -
+// the shadow under a conversation's parchment - subtracts: the source itself
+// at full alpha, the source scaled by the alpha below it. FillRectAlpha and
+// FillRectSub are the same two, with a constant colour for a source.
 enum {
     DXR_BLEND_ZERO = 0,
     DXR_BLEND_ONE1 = 1,
+    DXR_BLEND_ONE2_SUB_ONE1 = 5,
+    DXR_BLEND_ONE2_SUB_SRCALPHA1 = 9,
     DXR_BLEND_SRCALPHA1_ADD_INVSRCALPHA2 = 10,
 };
+
+// One channel of the compiled blend, on 0..255 values: c1 is the source, c2
+// the destination, a the source alpha. A 16-bit surface has no alpha channel,
+// so the source's alpha is the texture's default colour, which
+// CopyXLineInitialize sets to the call's Alpha; a fill's comes from its
+// colour's top byte.
+//
+// ONE2_SUB_ONE1 is psubusw in the MMX path and a clamped difference in the
+// other: c2 - c1, never below zero. ONE2_SUB_SRCALPHA1 scales first,
+// (c1 * a) shr 8, and clamps the difference through _SubTable. The alpha
+// blend keeps this header's rounding, which the interface was checked
+// against when the copy was first made native.
+static inline uint32_t dxr_blend_channel(uint32_t blend, uint32_t c1, uint32_t c2, uint32_t a) {
+    switch (blend) {
+    case DXR_BLEND_ZERO:
+        return 0u;
+    case DXR_BLEND_ONE2_SUB_ONE1:
+        return c2 > c1 ? c2 - c1 : 0u;
+    case DXR_BLEND_ONE2_SUB_SRCALPHA1: {
+        const uint32_t s = (c1 * a) >> 8;
+        return c2 > s ? c2 - s : 0u;
+    }
+    case DXR_BLEND_SRCALPHA1_ADD_INVSRCALPHA2:
+        return (c1 * a + c2 * (255u - a) + 127u) / 255u;
+    default:
+        return c1; // ONE1
+    }
+}
+// The blends this header computes. Any other keeps the straight copy it has
+// always had; this build's DXEffects passes no other.
+static inline int dxr_blend_known(uint32_t blend) {
+    return blend == DXR_BLEND_ZERO || blend == DXR_BLEND_ONE1 || blend == DXR_BLEND_ONE2_SUB_ONE1 ||
+           blend == DXR_BLEND_ONE2_SUB_SRCALPHA1 || blend == DXR_BLEND_SRCALPHA1_ADD_INVSRCALPHA2;
+}
 
 // One 16-bit channel's value, expanded to 0..255.
 static inline uint32_t dxr_channel_get(uint32_t surface, uint32_t index, uint32_t pixel) {
@@ -165,7 +204,10 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
         return;
 
     const uint32_t a = alpha < 0 ? 0u : (alpha > 255 ? 255u : (uint32_t)alpha);
-    const int straight = blend != DXR_BLEND_SRCALPHA1_ADD_INVSRCALPHA2 || a >= 255;
+    // A copy is a copy: ONE1, an opaque alpha blend, and - as before - a blend
+    // this header does not compute. Everything else reads the destination.
+    const int straight = blend == DXR_BLEND_ONE1 || !dxr_blend_known(blend) ||
+                         (blend == DXR_BLEND_SRCALPHA1_ADD_INVSRCALPHA2 && a >= 255);
     DxrChannel src_ch[3], dst_ch[3];
     for (uint32_t ch = 0; ch < 3; ++ch) {
         dxr_channel_load(src, ch, &src_ch[ch]);
@@ -197,7 +239,7 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
             for (uint32_t ch = 0; ch < 3; ++ch) {
                 const uint32_t cs = dxr_ch_get(&src_ch[ch], s);
                 const uint32_t cd = dxr_ch_get(&dst_ch[ch], d);
-                out |= dxr_ch_put(&dst_ch[ch], (cs * a + cd * (255u - a) + 127u) / 255u);
+                out |= dxr_ch_put(&dst_ch[ch], dxr_blend_channel(blend, cs, cd, a));
             }
             wr16(dp, (uint16_t)out);
         }
@@ -243,3 +285,81 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
 }
 
 #define FN_00a52780 siege_dxr_copy_rect_blend
+
+// dxrFillRectColorBlend, at 0x00a52a34 in the patch's 1.19 build: the other
+// DXR routine that compiles its loop at run time and runs it through
+// TDXRMachine.Run (0x00a52478), so translated, it draws nothing. Its one
+// caller is DXEffects.FillRectAlpha (0x00a53274), which passes
+// ColorToRGB(Color) | Alpha << 24 and Blend 10 - every alpha-dimmed rectangle
+// the game fills: the shade behind a dialog, and the dark over a level.
+//
+// Delphi's register convention: EAX is @Dest, EDX is @DestRect, CL the blend,
+// and the colour is the one stack parameter; the body ends RET 4.
+//
+// The compiled blend takes the alpha from the constant colour, a1 =
+// Byte(Col shr 24). Each channel is dxr_blend_channel's, as for the copy, so
+// the two agree; FillRectSub's subtract (blend 5) comes with it.
+static void dxr_fill_blend(uint32_t dst, const int32_t dr[4], uint32_t blend, uint32_t col) {
+    const uint32_t dst_bits = rd32(dst + DXR_SURF_BITS);
+    const int32_t dst_pitch = (int32_t)rd32(dst + DXR_SURF_PITCH);
+    const uint32_t dst_bpp = rd32(dst + DXR_SURF_BITCOUNT);
+    const int32_t dst_w = (int32_t)rd32(dst + DXR_SURF_WIDTH);
+    const int32_t dst_h = (int32_t)rd32(dst + DXR_SURF_HEIGHT);
+    if (!dst_bits || dst_bpp != 16)
+        return; // this game's surfaces are 16-bit; anything else keeps the original behaviour
+    // The early exit, then FillClip: the rectangle against the surface.
+    if (dr[0] >= dr[2] || dr[1] >= dr[3])
+        return;
+    const int32_t l = dr[0] > 0 ? dr[0] : 0, t = dr[1] > 0 ? dr[1] : 0;
+    const int32_t r = dr[2] < dst_w ? dr[2] : dst_w, b = dr[3] < dst_h ? dr[3] : dst_h;
+    if (l >= r || t >= b)
+        return;
+    if (!dxr_blend_known(blend))
+        return; // FillRectAlpha passes 10 and FillRectSub 5; nothing else calls it
+    const uint32_t k[3] = {col & 0xffu, (col >> 8) & 0xffu, (col >> 16) & 0xffu};
+    const uint32_t a = (col >> 24) & 0xffu;
+    DxrChannel ch[3];
+    for (uint32_t i = 0; i < 3; ++i)
+        dxr_channel_load(dst, i, &ch[i]);
+    // A constant result - ZERO, ONE1 - is one encoded word for every pixel.
+    uint32_t constant = 0;
+    for (uint32_t i = 0; i < 3; ++i)
+        constant |= dxr_ch_put(&ch[i], dxr_blend_channel(blend, k[i], 0u, a));
+    const int blended = blend != DXR_BLEND_ZERO && blend != DXR_BLEND_ONE1;
+    for (int32_t y = t; y < b; ++y) {
+        const uint32_t row = dst_bits + (uint32_t)(y * dst_pitch);
+        if (!dxr_in_arena(row + (uint32_t)l * 2u, (uint32_t)(r - l) * 2u))
+            return;
+        for (int32_t x = l; x < r; ++x) {
+            const uint32_t dp = row + (uint32_t)x * 2u;
+            if (!blended) {
+                wr16(dp, (uint16_t)constant);
+                continue;
+            }
+            const uint32_t d = rd16(dp);
+            uint32_t out = 0;
+            for (uint32_t i = 0; i < 3; ++i)
+                out |= dxr_ch_put(&ch[i], dxr_blend_channel(blend, k[i], dxr_ch_get(&ch[i], d), a));
+            wr16(dp, (uint16_t)out);
+        }
+    }
+}
+static void siege_dxr_fill_rect_color_blend(X86 *c) {
+    const uint32_t sp = c->r[R_ESP];
+    const uint32_t ret = rd32(sp);
+    const uint32_t dst = c->r[R_EAX], dst_rect = c->r[R_EDX];
+    const uint32_t blend = c->r[R_ECX] & 0xffu;
+    const uint32_t col = rd32(sp + 0x04);
+    if (dst && dst_rect && dxr_in_arena(dst_rect, 16) &&
+        dxr_in_arena(dst, DXR_SURF_CHANNELS + 4 * DXR_CHANNEL_STRIDE)) {
+        int32_t dr[4];
+        for (int i = 0; i < 4; ++i)
+            dr[i] = (int32_t)rd32(dst_rect + 4u * (uint32_t)i);
+        dxr_fill_blend(dst, dr, blend, col);
+    }
+    c->r[R_ESP] = sp + 4u + 0x04u; // RET 4
+    c->eip = ret;
+    recomp_return(c);
+}
+
+#define FN_00a52a34 siege_dxr_fill_rect_color_blend

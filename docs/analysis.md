@@ -6317,3 +6317,53 @@ mode is still cropped and stays an open item. `build.py` wants `--game-dir .`
 from this repository - without it the kit's stub game is built, which has no
 app target.
 
+## Black parchment, blocky speech, striped maps and two crashes (2026-09-17)
+
+Four reports from play at 1920x1080, each reproduced before it was fixed.
+
+**The crash while playing.** Two logs ended in "call to unknown target
+00b991c0" and then a SIGBUS with ESP at ffffffec. 00b991c0 is a Delphi method
+behind a run of UTF-16 text, reached only indirectly; a third log named
+00c4d760, an event handler (`CALL [EBX+4]`) the listing folds into
+FUN_00c4d6b0. Both are in `game.toml`'s entry points now. The regenerate
+needs `--allow-unmodelled` as the README says: without it the translator
+refuses 404 dispatches, starting with an AVX `VMOVUPS` in fn_00807290.
+
+**Black parchment.** The conversation dialog draws its shadow map with
+`DrawSub(..., 170)` - DXR blend 9, `ONE2_SUB_SRCALPHA1`, or 5 at full alpha -
+and `native/dxr_blend.h` treated every blend but 10 as a copy, so the shadow
+went down opaque. A 1.17.1 smoke frame from 2026-09-16 shows the same band:
+this was never right. The generated code for 5 is `psubusw` and for 9 is
+`c2 - (c1 * a) shr 8` clamped through `_SubTable`; with the source alpha taken
+from the texture's default colour, which `CopyXLineInitialize` sets to the
+call's Alpha. The header computes both. The run log also showed "guest thunk
+02a5e0d5 stopped" paired with "call to unknown target" from 00a524aa: that is
+TDXRMachine.Run (00a52478) called by dxrFillRectColorBlend (00a52a34), the
+other routine that compiles its loop, for FillRectAlpha. It is native too.
+`tests/test_dxr_blend.py` compiles a harness against the header with the
+runtime stubbed and checks copy, both subtracts, the key, and both fills.
+
+**Blocky speech.** `TSpriteObject.Say` draws with `DrawText` on a fresh
+TBitmap and never sets a font, so it gets the VCL default - "Segoe UI", the
+smoke log says - which the kit had no face for and drew in 8x16 cells. The
+kit now bundles Open Sans for Windows' interface faces (kit `91d51c0`), the
+user's choice over host fonts.
+
+**Striped maps.** Not reproducible at 800x600 or through the DirectDraw path
+at 1920x1080 (`AltCursor=true`, 453 flips). `AltCursor=false`, as in the
+player's profile, takes the D3D11 renderer, and with the character moving the
+map smeared into vertical strips exactly as reported. Scrolling is
+`TAniView.UpdateMap`: `lpDDSMap.BltFast(X, Y, lpDDSMap, ...)`, a self-blit.
+The kit's blit copied rows top down, so a downward scroll read back rows it
+had written. DirectDraw screens never showed it because the host replays blit
+records from the source's leased revision; the D3D11 renderer uploads the
+game's own back buffer, built from the damaged map buffer. Kit `8d8fdc7`
+copies overlaps as DirectDraw does. The same smoke then renders the scrolled
+level cleanly.
+
+**Also seen, open.** One 1080 smoke run ended with a nil call returning to
+008d23fa and a SIGSEGV on guest thread 3 after the script finished; a second
+run of the same script exited cleanly. The game ignores WM_CLOSE in the level
+(the smoke's close watchdog unwinds it). `SystemParametersInfo` 31 and 41
+still report unsupported; the default face is right without them.
+

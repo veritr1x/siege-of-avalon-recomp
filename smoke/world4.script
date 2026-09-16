@@ -1,0 +1,119 @@
+# As world3.script, for 1.19: the creator asks whether to play the tutorial
+# after Continue, and "no" is at 463,336. Then the journal, Corvus, the level.
+wait 6000
+click left 584 450
+wait 7000
+click left 400 68
+wait 8000
+click left 372 146
+wait 2500
+click left 525 115
+wait 1000
+click left 525 217
+wait 1500
+click left 372 100
+wait 1000
+key N down
+key N up
+key Y down
+key Y up
+key P down
+key P up
+wait 1500
+click left 610 470
+wait 3000
+dump tutorial-question
+click left 463 336
+wait 9000
+dump journal
+click left 765 585
+wait 6000
+dump world-a
+wait 6000
+dump world-b
+wait 3000
+# Answer Corvus until the conversation closes and the level is visible. His
+# replies sit just under his text, which runs from two lines to four, so each
+# round clicks down the column where the first reply can be.
+click left 350 200
+wait 3000
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-1
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-2
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-3
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-4
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-5
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-6
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-7
+click left 330 164
+wait 1500
+click left 330 183
+wait 1500
+click left 330 202
+wait 1500
+click left 330 221
+wait 1500
+dump talk-8
+wait 3000
+dump level
+key DOWN down
+wait 1500
+key DOWN up
+wait 1500
+dump level-moved
+wait 2000

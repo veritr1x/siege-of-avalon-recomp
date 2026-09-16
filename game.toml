@@ -115,7 +115,20 @@ volatile_reads = []
 # / MOV [EBP-4],EAX, the three-register Delphi convention. Without it the run
 # reports "call to unknown target 00c63520" from 009664f3 and then dies on a
 # nil call at 009665c8.
-entry_points = [0x00994fe8, 0x00c2bd8c, 0x00c63520]
+#
+# 00b991c0 is the same shape again - four-byte aligned behind a run of UTF-16
+# text, PUSH EBP / MOV EBP,ESP / ADD ESP,-0x64 / PUSH EBX / PUSH ESI / PUSH EDI
+# / XOR EBX,EBX - reached only indirectly (the caller returns to 00b4ef1d)
+# while playing. Without it the run reports "call to unknown target 00b991c0",
+# the call returns zero, and the guest dies of a SIGBUS with its stack pointer
+# at ffffffec.
+#
+# 00c4d760 is another event handler: four-byte aligned after a RET and a
+# MOV EAX,EAX, PUSH EBP / MOV EBP,ESP / ADD ESP,-0x24 / MOV [EBP-0x1c],EDX /
+# MOV [EBP-4],EAX, and called only as a TMethod (CALL [EBX+4], return
+# 00aaad7d). The listing folds it into FUN_00c4d6b0, which it takes to run on
+# to 00c4dd88. Missing, the run reports "call to unknown target 00c4d760".
+entry_points = [0x00994fe8, 0x00c2bd8c, 0x00c63520, 0x00b991c0, 0x00c4d760]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the

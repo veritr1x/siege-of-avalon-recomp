@@ -1,0 +1,218 @@
+# world4.script at 1920x1080: the launcher is centred on the whole frame, and
+# every dialog after it is centred, 560,240 from where it is at 800x600.
+wait 6000
+dump launcher
+click left 1142 684
+wait 7000
+dump main-menu
+click left 960 308
+wait 8000
+dump creator
+click left 932 386
+wait 2500
+click left 1085 355
+wait 1000
+click left 1085 457
+wait 1500
+click left 932 340
+wait 1000
+key N down
+key N up
+key Y down
+key Y up
+key P down
+key P up
+wait 1500
+click left 1170 710
+wait 3000
+dump tutorial-question
+click left 1023 576
+wait 9000
+dump journal
+click left 1325 825
+wait 6000
+dump world-a
+wait 6000
+dump world-b
+wait 3000
+# Answer Corvus until the conversation closes and the level is visible. His
+# replies sit just under his text, which runs from two lines to six, so each
+# round clicks down the column where the first reply can be.
+click left 910 440
+wait 3000
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-1
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-2
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-3
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-4
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-5
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-6
+click left 890 404
+wait 1000
+click left 890 421
+wait 1000
+click left 890 438
+wait 1000
+click left 890 455
+wait 1000
+click left 890 472
+wait 1000
+click left 890 489
+wait 1000
+click left 890 506
+wait 1000
+click left 890 523
+wait 1000
+click left 890 540
+wait 1000
+click left 890 557
+wait 1000
+dump talk-7
+wait 3000
+dump level
+# Walk: the camera scrolls with the character, which is when the map is
+# updated strip by strip rather than drawn whole.
+click left 400 300
+wait 1000
+dump walk-1
+wait 1000
+dump walk-2
+wait 1500
+dump walk-3
+click left 1500 850
+wait 1000
+dump walk-4
+wait 1000
+dump walk-5
+wait 1500
+dump walk-6
+click left 300 900
+wait 1500
+dump walk-7
+wait 1500
+dump walk-8
+key DOWN down
+wait 1500
+key DOWN up
+wait 1500
+dump level-moved
+wait 2000

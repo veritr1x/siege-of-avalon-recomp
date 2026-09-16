@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- The conversation parchment's shadow darkens the scene instead of covering it
+  in black, and alpha-dimmed rectangles are drawn. `native/dxr_blend.h`
+  computes the two subtract blends DXEffects.DrawSub passes (it had copied
+  them opaque) and replaces dxrFillRectColorBlend (0x00a52a34), the other
+  routine that compiles its loop at run time, for FillRectAlpha and
+  FillRectSub. `tests/test_dxr_blend.py` builds a harness against the header
+  and checks every blend.
+
+- Two more entry points in `game.toml`: 0x00b991c0, whose absence ended a
+  play session in a SIGBUS, and 0x00c4d760, an event handler the listing
+  folds into its neighbour.
+
+- `smoke/world4.script` plays 1.19 into the level at 800x600 (it declines
+  the new tutorial question and answers Corvus down a column of reply
+  positions), and `smoke/world1080.script` does the same at 1920x1080 and
+  walks the character. With `AltCursor=false` in the profile the game takes
+  its D3D11 renderer, as the app does.
+
+- Kit updated: speech over characters in Open Sans instead of 8x16 cells, a
+  scrolled map no longer smears into vertical strips, the D3D11 present no
+  longer caps the game at 16 fps, clicks reach the right half of the screen,
+  Present waits for the refresh, and the Metal presenter no longer piles up
+  drawables.
+
 - The 2021 GOG build is no longer supported; the community 1.19 patch's GOG
   executable is the only one. README, CONTRIBUTING and NOTICE describe
   building `original/patched` - the GOG install with the patch unpacked over
