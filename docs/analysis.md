@@ -6176,3 +6176,53 @@ the paint, `undeliverable calls: none`. Translation unchanged in size
 intro cinematic unchanged (1542/2265/471 colours on its three dumps), and the
 menu still at p50 8.27 ms = 120.9 fps, p95 11.42, p99 12.27, zero intervals
 over 16.7 ms.
+
+**The missing in-game text was the blend override reading a packed record as a
+padded one.** Not the text resource, which loads: `text.ini` opens, reads all
+21,420 bytes and converts at codepage 1252, and `training points = 18` comes
+from IntToStr rather than any INI and was missing too. Not the glyph metrics,
+which parse: `fntAlphaCoords.dat` is read to EOF and the blend arrives with real
+rectangles (`dr=437,213,445,238`, `sr=113,0,121,25`). The fault is one layout
+constant. `TDXR_Surface` is PACKED in the pinned patch build - a one-byte
+ColorType with nothing padding it - and `native/dxr_blend.h` read it padded, so
+every DWORD field sat three bytes off. For a font sheet that is really 533x75 at
+16bpp with pitch 1072 it read Width 19200, Height 2304 and BitCount 1181552640,
+and `dxr_blit_blend` wrote nothing at all. Only the alpha path goes through that
+routine, which is exactly why keyed BltFast text was fine and the training-style
+list, the stat values and every dimmed panel were not. The surfaces arriving on
+odd addresses is the tell, and an earlier 1.19 build did pad the record, which
+is how the padded constants got there. Verified against the 1.17 reference
+frames: 729 and 689 colours, matching exactly, with Fighter/Scout/Magician,
+`training points = 18` and every stat value back.
+
+Worth recording for the next one of these: the override was live and running the
+whole time - proving that took a one-line probe - so "the override is enabled"
+and "the override works" are different claims, and the parameters it receives
+are the place to look before anything upstream of it.
+
+**Hover lag: not reproducible here, and measured not to be a frame-rate fault.**
+A script that hovers the launcher's text rows, and one that drives 240
+consecutive mouse moves across them, both hold 120 fps with nothing to see:
+800x600 gives p50 8.26 ms, max 11.08, zero intervals over 16.7 ms; 1920x1080 at
+the play profile's own settings gives p50 8.34 ms, max 9.74, again zero. So
+whatever the lag is, it is not the guest falling behind a frame deadline in a
+smoke, at either size.
+
+Profiling the hover workload puts `WindowFromPoint` at 2.60%, which is the known
+`mouse_window` -> `window_z_order` cost: the z-order vector is rebuilt and every
+window rescanned per call, at every recursion level, with two `find_window`
+lookups per comparison in the top-level sort. It is real and it is on the
+mouse-move path, but at 2.6% it does not explain a visible stall, and the
+measurement that would justify touching shared input code does not support it.
+Left alone deliberately.
+
+Two things the play log shows that a smoke cannot: `presenter: FAULT: drawable
+acknowledgement exceeded queue grace` - a one-shot diagnostic whose `flight=`
+field is a frame-id sentinel, not a count, so not the lead it looks like - and
+`host: guest pointer unavailable: reason=vtable-mismatch`, which is expected
+here: the closed-loop pointer correction reads a mouse object whose layout the
+kit inherited from the game it began with, and `game.toml` already records that
+this game has none. Neither explains the report. The next step is a run of the
+real app with `RECOMP_FRAME_TIMINGS` and `RECOMP_PROFILE=1`, hovering until the
+lag appears and then quitting through the game's own Exit so the sampler's
+atexit report is written.
