@@ -159,6 +159,16 @@ camera = 0x00a36e50
 # "auto" shows the on-screen keypad when no hardware keyboard is attached.
 keypad = "auto"
 
+[mods]
+# The mod runtime's Populous integrations hook Populous routines by address;
+# this game has none of them.
+builtin = "none"
+
+[settings]
+# The F10 page's rows. The renderer rows drive Populous's Direct3D renderer
+# and frame loop; Siege draws through Direct3D 11 and its own pacing.
+rows = ["window", "performance_overlay", "keypad"]
+
 [setup]
 # tools/setup.py: what a supported installation must contain. No annotation
 # metadata exists for this executable; tools/analyze.py runs Ghidra's own
