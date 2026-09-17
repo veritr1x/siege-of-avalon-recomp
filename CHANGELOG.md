@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Kit updated: the level no longer crashes now and then while a worker
+- Kit updated: its CI builds on every platform again, and the GeneralUser GS
+  SoundFont, which had never been committed, is in the kit, so a fresh
+  checkout has music. The level no longer crashes now and then while a worker
   creates a window, so closing the game from a level works; windowed mode
   fills the window instead of showing a corner of the game; Direct3D 11
   frames are drawn on the GPU; the main menu loop no longer spins, and the
