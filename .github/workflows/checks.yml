@@ -35,7 +35,7 @@ jobs:
           submodules: recursive
       # The kit pins numpy 2.0.2, which has wheels up to Python 3.12; a
       # runner's newer default would build it from source and fail.
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
       - name: Enter the Visual Studio developer environment (Windows)
