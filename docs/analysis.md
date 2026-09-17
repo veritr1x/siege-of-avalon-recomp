@@ -6432,3 +6432,65 @@ also shows stranded guest threads) was this state.
 **Open.** In-game frame rate on the GPU path in the app and on the iPad is not
 yet measured by the player. 0080b3e0 is still untranslated; it is only reached
 by an exception nothing else handles.
+
+## Any display shape: the 1080 layout, fitted (2026-09-17)
+
+**The bars.** The game has three layouts, each a packed
+`TScreenResolutionData` record in `.data` (`engine/SoAOS.Types.pas`); the
+1080 one, `cFullHD`, is at 0x00c852f2. A 16:10 Mac or a 1.43:1 iPad showed it
+letterboxed. `siege.ini`'s `ScreenResolution=1080` makes the game copy that
+record into `ScreenMetrics` (0x00d312e0) with `_CopyRecord` (0x0080dbb4,
+source in EDX), and every layout read after that is a field of the copy,
+except the spell bar's rows, which `TfrmMain.FormMouseDown` (0x00c3fcbc) and
+`FormMouseMove` (0x00c4090c) compare as constants (966, 999, 1075, 1000).
+
+**What changes.** `native/screen_layout.h`, one of the overrides
+`native/siege_native.h` gathers, replaces `_CopyRecord`. The first copy of
+`cFullHD` rewrites it, if it still holds the shipped values, for the display
+the host reports (kit `host_display_screen_size`: the fullscreen window, or
+else the window's display). The aspect is held to 4:3 through 32:9; narrower
+than 16:9 keeps 1920 wide and grows the height, wider keeps 1080 tall and
+grows the width, even sizes, and within 0.01 of 16:9 nothing changes. The
+screen, the map surface and the map viewport grow by the difference; the
+sidebar's fields and hit rectangles (stats, mana, health, inventory) move with
+the right edge; the bars' fields and rectangles (party, roster, spell,
+message, journal buttons, help box, inventory, map) move with the bottom. The
+mode is offered to DirectDraw (`ddraw_add_mode`). While the spell bar is open,
+the two mouse handlers are given the cursor moved back up by the growth, and a
+cursor on the map inside the old rows is given as row 965.
+
+**The art.** The sidebar is blitted `Rect(0,0,117,SpellBarY)`, the bars
+`Rect(0,0,ScreenWidth,114)`, and the menu backdrop at full screen with its
+800x600 hole (magenta) where the dialogs centre themselves. Those are
+regenerated into the profile, which the file overlay reads first, for each
+language directory the game has: the sidebar repeats its last 100-row panel
+(rows 660-760) where it grows, the bars repeat parchment columns 1300-1700
+before the map button, and the backdrop (a vignette, where any repeat shows a
+seam) is stretched either side of the hole, which stays 1:1 and centred. A
+file already the right size is kept; a 16:9 display removes fitted copies.
+`recomp_writable_path` answers only from the overlay, so nothing is written
+into the game directory. The opening animation draws its border only at
+exactly 1080 tall, so it shows black around its 800x600 frame on a taller
+screen, as it does at 720.
+
+**Seen.** Smokes (`RECOMP_SMOKE_DRAWABLE` is also the smoke's display):
+1920x1342 (the shape of the 2388x1668 iPad Pro), `world1080.script` with clicks moved down 131,
+all expectations met; 2560x1080 with clicks moved right 320, the level with
+bars across the width and the sidebar at the right edge, dialogs centred.
+Exit from the menu passed at 1920x1080 (5 runs), 1920x1342 (1 run) and
+2560x1080 (5 of 6). On the Mac (a notched 1512x982 display, fullscreen window
+1512x949), the app reported `the 1920x1080 layout fits the 1512x949 display
+as 1920x1206`; the menu and a loaded level filled the window at 120 fps, the
+spell bar opened, showed its hover box and closed on a click inside its moved
+rows, the bottom bar's tooltips and the inventory button answered. The iPad
+build is installed on an 11-inch M4 iPad Pro (1210x834 points, so
+1920x1324); the layout there is chosen after Play and is not yet seen. `tests/test_screen_layout.py` checks the sizes, the rewritten record,
+the regenerated art and the cursor rows.
+
+**Open.** Three of nine 2560x1080 runs (two world smokes, one menu exit)
+aborted at shutdown with the signature of the level's crash above: a call to
+00000000 from `StdWndProc` (008d23fa) on game thread 3, then 0080b3e0. The
+next six 2560x1080 runs, and every run at the other sizes, exited cleanly, so
+the `CreationControl` race is narrower after kit `6c4a382` but not closed. The
+layout is chosen once per launch; moving the window to a display of another
+shape needs a restart.

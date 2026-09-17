@@ -64,8 +64,9 @@ listings = "analysis/decompiled/Siege.exe-1.19-patch"
 globals = "globals.toml"
 # Native replacements for translated functions: the software blends the game
 # compiles at run time, which translated code cannot execute
-# (dxrCopyRectBlend and dxrFillRectColorBlend in this image).
-overrides = "native/dxr_blend.h"
+# (dxrCopyRectBlend and dxrFillRectColorBlend in this image), and the 1080
+# layout fitted to the display's shape (native/screen_layout.h).
+overrides = "native/siege_native.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
 animation_counter = 0x00a36e00

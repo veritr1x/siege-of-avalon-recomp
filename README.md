@@ -15,9 +15,10 @@ The runtime, translator, hosts and mod foundation are
 submodule `kit/`. This repository holds what is Siege of Avalon's:
 `game.toml` and `globals.toml` (identity, addresses, curated symbols),
 `native/` (the blend routines the game compiles at run time, written
-natively), `tests/` (the config's contract with the kit), `smoke/` (scripted
-runs), `tools/analyze.py` (this game's listing export) and docs. The kit is
-public; recursive checkout needs no separate access token.
+natively, and the layout fitted to the display), `tests/` (the config's
+contract with the kit), `smoke/` (scripted runs), `tools/analyze.py` (this
+game's listing export) and docs. The kit is public; recursive checkout needs
+no separate access token.
 
 **You need your own copy of the game.** Game executables, artwork, sound,
 music, maps, movies, generated game code and replacement packs are prepared
@@ -47,20 +48,21 @@ settings. On macOS the level and its conversations run at the display's
 modes both fill the window. The kit is pinned to its `siege-delphi` branch;
 commands, captures and results are in [docs/analysis.md](docs/analysis.md).
 
-The game has three layouts (800x600, 1280x720, 1920x1080), so a display of
-another shape shows the picture letterboxed; the iPad has bars above and
-below. Frame rates in long play sessions are not yet recorded.
+The game's 1920x1080 layout is fitted to the display's shape (4:3 to 32:9):
+the map grows, the sidebar and bars follow their edges, and their art is
+regenerated at the new size into the profile, so a 16:10 Mac or an iPad is
+filled without bars. Frame rates in long play sessions are not yet recorded.
 
 ## Platform status
 
-Status at kit `siege-delphi` `a809e03`. Build commands assume the private
+Status at kit `any-resolution` `feb9be0` (local). Build commands assume the private
 game installation and Ghidra listings are prepared as described below.
 Linux and Windows target current releases supported by SDL3.
 
 | Platform | Verified status | Build command | Remaining checks |
 | --- | --- | --- | --- |
-| macOS 14+ | Plays by hand into the first level at 1920x1080, fullscreen and windowed; music, saves, settings, the intro movie and Exit work. The hover smoke runs at 110 new frames a second on a 120 Hz presenter; the world and exit smokes pass. | `.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code"` | Frame rates across a long session; `0080b3e0`, the game's outermost exception handler, is not translated. |
-| iPadOS 17+ | Installs and plays on an iPad Pro, fullscreen at 1920x1080 with bars above and below. | `.venv/bin/python tools/build.py --target ios --team <TEAM_ID> --no-install` | Frame rate by hand; filling non-16:9 displays. |
+| macOS 14+ | Plays by hand into the first level, fullscreen (fitted to the display, 1920x1206 on a notched MacBook) and windowed; music, saves, settings, the intro movie and Exit work. The hover smoke runs at 110 new frames a second on a 120 Hz presenter; the world and exit smokes pass. | `.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code"` | Frame rates across a long session; `0080b3e0`, the game's outermost exception handler, is not translated. |
+| iPadOS 17+ | Installs and plays on an iPad Pro, fullscreen. The fitted layout (1920x1324 on an 11-inch M4 iPad Pro) is installed and not yet seen on the device. | `.venv/bin/python tools/build.py --target ios --team <TEAM_ID> --no-install` | Frame rate by hand; the fitted layout by hand. |
 | Linux | Never built or run on Linux. | `.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code" --jobs 8` | Native build/package, Vulkan window/driver validation, movies/audio, input, Save/Load and exit on hardware. |
 | Windows | Never built or run on Windows. | `.venv\Scripts\python tools\build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code" --jobs 8` | Native build/package, Vulkan validation, guest path separators, movies/audio, input, Save/Load and exit on hardware. |
 | Android 10+ (Vulkan 1.1) | Never built for Android. | `.venv/bin/python tools/build.py --target android` | APK build, installation, boot, touch play, Save/Load and background/resume on a tablet. |
@@ -172,8 +174,8 @@ minus `[bundle].exclude` in `game.toml` (the installer's support files, the
 Windows DLLs other than the Dfx module the runtime maps, and the patch's other
 executables) and seeds it into its own Documents on first launch, about
 1.7 GB, stamped with the executable's SHA-256 so a rebuilt bundle is
-recognised. It runs fullscreen at the game's 1920x1080, scaled to the
-display with bars above and below; the kit's pointer gestures apply (a tap
+recognised. It runs fullscreen with the game's 1920x1080 layout fitted to
+the display's shape; the kit's pointer gestures apply (a tap
 places the pointer and clicks, a long press right-clicks, the on-screen
 keypad stands in for the keyboard). `tools/ios_logs.py --device <id> --game-dir .` pulls the
 app's Documents back to `build/ios-pull`.

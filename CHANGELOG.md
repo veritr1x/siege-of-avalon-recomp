@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The game fills displays of any shape from 4:3 to 32:9 instead of showing
+  bars. `native/screen_layout.h` fits the 1920x1080 layout to the display
+  when the game first applies it: the screen and map grow, the sidebar and
+  bars follow their edges, their art and the menu backdrop are regenerated at
+  the new size into the profile, and the spell bar's hit rows follow it. The
+  overrides header is now `native/siege_native.h`, which includes it and
+  `native/dxr_blend.h`; `tests/test_screen_layout.py` checks it.
+
 - Kit updated: its CI builds on every platform again, and the GeneralUser GS
   SoundFont, which had never been committed, is in the kit, so a fresh
   checkout has music. The level no longer crashes now and then while a worker
