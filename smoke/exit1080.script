@@ -1,0 +1,9 @@
+# Main menu Exit, then "yes", at 1920x1080. The game quits on its own; the
+# host closes it only if it is still running when the script ends.
+wait 6000
+click left 1142 684
+wait 7000
+click left 958 620
+wait 2000
+dump confirm
+click left 888 715
