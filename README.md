@@ -55,7 +55,7 @@ filled without bars. Frame rates in long play sessions are not yet recorded.
 
 ## Platform status
 
-Status at kit `any-resolution` `9ff619a` (local). Build commands assume the private
+Status at kit `any-resolution` `f0f0209` (local). Build commands assume the private
 game installation and Ghidra listings are prepared as described below.
 Linux and Windows target current releases supported by SDL3.
 
