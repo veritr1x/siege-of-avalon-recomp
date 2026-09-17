@@ -6487,10 +6487,17 @@ build is installed on an 11-inch M4 iPad Pro (1210x834 points, so
 1920x1324); the layout there is chosen after Play and is not yet seen. `tests/test_screen_layout.py` checks the sizes, the rewritten record,
 the regenerated art and the cursor rows.
 
-**Open.** Three of nine 2560x1080 runs (two world smokes, one menu exit)
+**Open.** Four of thirteen 2560x1080 runs (two world smokes, two menu exits,
+one of them on the kit merged into main)
 aborted at shutdown with the signature of the level's crash above: a call to
 00000000 from `StdWndProc` (008d23fa) on game thread 3, then 0080b3e0. The
-next six 2560x1080 runs, and every run at the other sizes, exited cleanly, so
+other nine 2560x1080 runs, and every run at the other sizes, exited cleanly, so
 the `CreationControl` race is narrower after kit `6c4a382` but not closed. The
 layout is chosen once per launch; moving the window to a display of another
 shape needs a restart.
+
+**Merged (2026-09-17).** The kit's Siege line, with the launcher, is merged
+into kit `main` (`623e504`), and this repository pins `main`. On the merge:
+17 native suites, 348 portable tests, the 1920x1342 world smoke and the
+1080 exit smoke pass; 2560x1080 exit passed three of four (the shutdown abort
+above).

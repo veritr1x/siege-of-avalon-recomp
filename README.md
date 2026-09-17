@@ -45,7 +45,7 @@ The 1.19 image translates and runs from the launcher through character
 creation, the intro movie and the first level, with music, saves and
 settings. On macOS the level and its conversations run at the display's
 120 Hz: Direct3D 11 frames are drawn on the GPU, and windowed and fullscreen
-modes both fill the window. The kit is pinned to its `siege-delphi` branch;
+modes both fill the window. The kit is pinned to its `main`;
 commands, captures and results are in [docs/analysis.md](docs/analysis.md).
 
 The game's 1920x1080 layout is fitted to the display's shape (4:3 to 32:9):
@@ -55,7 +55,7 @@ filled without bars. Frame rates in long play sessions are not yet recorded.
 
 ## Platform status
 
-Status at kit `any-resolution` `f0f0209` (local). Build commands assume the private
+Status at kit `main` `623e504`. Build commands assume the private
 game installation and Ghidra listings are prepared as described below.
 Linux and Windows target current releases supported by SDL3.
 
