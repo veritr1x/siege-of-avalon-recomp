@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The kit's launcher comes with this port: `game.toml` `[launcher]` names the
+  game, the folders and the GOG id (2085372274, from the installer's
+  `goggame` file) it looks for. It opens when the game is missing, with
+  `--launcher`, or with Shift or Option held at start.
+
 - The game fills displays of any shape from 4:3 to 32:9 instead of showing
   bars. `native/screen_layout.h` fits the 1920x1080 layout to the display
   when the game first applies it: the screen and map grow, the sidebar and

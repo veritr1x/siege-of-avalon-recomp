@@ -55,7 +55,7 @@ filled without bars. Frame rates in long play sessions are not yet recorded.
 
 ## Platform status
 
-Status at kit `any-resolution` `feb9be0` (local). Build commands assume the private
+Status at kit `any-resolution` `328e1e9` (local). Build commands assume the private
 game installation and Ghidra listings are prepared as described below.
 Linux and Windows target current releases supported by SDL3.
 
@@ -99,8 +99,11 @@ executable, so this script runs Ghidra's analyzers instead. Outputs (the
 translation, the apps, the logs) live under ignored `build/`; the game lives
 in ignored `original/` and the Ghidra listings in ignored `analysis/`.
 
-The app is `build/SiegeOfAvalonRecomp.app`. It opens the game's launcher;
-**Play** starts the game. The profile (settings, saves) is the kit's; F10
+The app is `build/SiegeOfAvalonRecomp.app`. When it cannot find the game, or
+when started with `--launcher`, `RECOMP_LAUNCHER=1` or Shift or Option held,
+it opens the kit's launcher first, which finds a GOG install or takes a
+folder you pick (on the iPad and Android it copies the game into the app's
+storage). The game then opens its own launcher; **Play** starts the game. The profile (settings, saves) is the kit's; F10
 opens the kit's settings page, where Display chooses windowed or fullscreen.
 
 ## Build on Linux

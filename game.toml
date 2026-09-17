@@ -168,6 +168,15 @@ builtin = "none"
 # and frame loop; Siege draws through Direct3D 11 and its own pacing.
 rows = ["window", "performance_overlay", "keypad"]
 
+[launcher]
+# The launcher (kit host/launcher/): what it calls the game, the folder names
+# and GOG id it looks for (goggame-2085372274.info in the GOG install), and
+# the headroom an import leaves free.
+title = "Siege of Avalon: Anthology"
+install_names = ["Siege of Avalon Anthology", "Siege of Avalon"]
+gog_ids = ["2085372274"]
+min_free_mb = 300
+
 [setup]
 # tools/setup.py: what a supported installation must contain. No annotation
 # metadata exists for this executable; tools/analyze.py runs Ghidra's own
