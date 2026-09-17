@@ -6367,3 +6367,53 @@ run of the same script exited cleanly. The game ignores WM_CLOSE in the level
 (the smoke's close watchdog unwinds it). `SystemParametersInfo` 31 and 41
 still report unsupported; the default face is right without them.
 
+
+## Frame rate, a hardware path for Direct3D 11, and windowed mode (2026-09-17)
+
+**50 fps on a 120 Hz display.** Per-thread import counts settled it: the
+game's D3D presenter thread called `Present` 51 times a second, and the main
+thread called `GetCursorPos` about 61,000 times a second from 009ffdac, which
+is `TApplication.DoMouseIdle`. The kit's `WaitMessage` returned at once, so
+Delphi's idle loop spun and held the scheduler baton, and the render and mouse
+threads ran only when it let go. `WaitMessage` now waits for a message or a
+paint (kit `d124185`). Earlier the same day the main thread's cost was the
+DirectDraw Unlock compare; Unlock now diffs only the rows the guest wrote
+(kit `65ff583`), and the present chain lost several full-frame copies. The
+smoke's own pacing was 60 Hz until the offscreen presenter was set to its
+synthetic link's 120 Hz. Hover smoke: 45 new frames a second before, 110
+after, median gap 8.4 ms.
+
+**The world advances every 30 ms.** `AniDemo.pas` reads `Interval=30`, so
+standing still shows about 30 new frames a second whatever the renderer does;
+cursor and hover motion supply the rest.
+
+**Hardware path.** The kit's D3D11 is a software rasterizer. The game draws
+two texel-aligned quads a frame (the R16 main layer and the cursor), which
+the kit now sends to the GPU (`host/gpu2d.cpp`, kit `41fbb9c`) and presents
+without CPU pixels when the swap chain owns the screen. GPU and software
+captures of the hover smoke are pixel-identical. The smoke host reads every
+GPU frame back for its captures, so smoke frame rates under-read the app.
+`RECOMP_D3D11_SOFTWARE=1` turns the path off. The kit's quoted copy of the
+game's HLSL became a prose description (kit `d96097e`).
+
+**Windowed mode was cropped.** With Fullscreen unchecked the game creates a
+windowed swap chain on its 1920x1080 main form, and the app's guest desktop
+was the 1024x768 fallback, so the picture showed the window's top-left corner
+(the smoke host's desktop is the drawable size, which is why smokes never
+showed it). A windowed chain on a top-level window now owns the display like a
+fullscreen one (kit `3f39863`): the mode is the back buffer and the window
+covers it. Seen in the app: the whole menu, 116-120 fps, clicks landing, and
+the GPU path running; in a Mac window the game scales to fit.
+
+**Exit abort.** One world smoke ended with Metal's "Command encoder released
+without endEncoding": the hardware path had a pass open when the presenter
+went away. The presenter now finishes that work first; five repeat smokes in
+both modes exited cleanly.
+
+**Settings.** Another session's settings-page branch is merged (kit
+`e3435a3`): `game.toml` lists the F10 rows, turns off the Populous mod hooks,
+and the host window follows the Display setting instead of
+`ForceD3DFullscreen`.
+
+**Open.** In-game frame rate on the GPU path in the app and on the iPad is not
+yet measured by the player; the iPad build predates `3f39863`.
