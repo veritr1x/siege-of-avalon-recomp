@@ -55,7 +55,7 @@ filled without bars. Frame rates in long play sessions are not yet recorded.
 
 ## Platform status
 
-Status at kit `main` `32bb542`. Build commands assume the private
+Status at kit `main` `36a0675`. Build commands assume the private
 game installation and Ghidra listings are prepared as described below.
 Linux and Windows target current releases supported by SDL3.
 
@@ -144,8 +144,11 @@ entry runs portable tests and a stub build.
 Prepare the Ghidra listings with the macOS steps above and copy the private
 `analysis/decompiled/Siege.exe-1.19-patch/` directory to the same ignored
 path in the Windows checkout, with the patched installation in
-`original\patched`. Install Python and LLVM's clang/lld, then use a Visual
-Studio developer PowerShell with the Windows SDK and clang/lld on `PATH`:
+`original\patched`. Install Python, LLVM's clang/lld and
+[MSYS2](https://www.msys2.org/) with `pacman -S make diffutils` (the intro
+movies need FFmpeg, which the kit builds with MSYS2's make and Visual Studio's
+compiler), then use a Visual Studio developer PowerShell with the Windows SDK
+and clang/lld on `PATH`, and `C:\msys64\usr\bin` after them:
 
 ```powershell
 py -3 -m venv .venv
@@ -156,9 +159,10 @@ $env:RECOMP_EXE = (Resolve-Path 'original\patched\Siege.exe').Path
 .\build\package\SiegeOfAvalonRecomp\SiegeOfAvalonRecomp.exe
 ```
 
-The Visual Studio/MSVC-ABI compiler path keeps the kit's video decoding off,
-so the intro movies do not play in that build. Record the GPU, driver and
-results of a first run in [docs/analysis.md](docs/analysis.md).
+Without MSYS2's make the build configures with video off and the intro
+movies do not play. Kit CI builds FFmpeg this way on Windows and runs its
+video tests; the game itself has not been run on Windows. Record the GPU,
+driver and results of a first run in [docs/analysis.md](docs/analysis.md).
 
 ## Play on an iPad
 

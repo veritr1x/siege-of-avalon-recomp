@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Kit updated: the Windows build decodes video (FFmpeg built with Visual
+  Studio's compiler from MSYS2's make), so the intro movies are no longer off
+  there; the README's Windows steps install MSYS2's make.
+
 - The kit's launcher comes with this port: `game.toml` `[launcher]` names the
   game, the folders and the GOG id (2085372274, from the installer's
   `goggame` file) it looks for. It opens when the game is missing, with
