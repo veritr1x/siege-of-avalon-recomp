@@ -1,8 +1,8 @@
 # game.toml - everything the kit needs to know about Siege of Avalon: Anthology
 # with the community 1.19 patch that is not derivable from the binary. The
-# patch ships store-specific executables; this port pins the GOG one,
-# SiegeGoG.exe (linked 2025-06-09, Embarcadero Delphi), moved over the
-# install's Siege.exe. See docs/analysis.md for what it needs from the kit.
+# patch ships several executables; this port pins its own Siege.exe (1.19,
+# linked 2026-01-31, Embarcadero Delphi), which the patch places over the
+# install's. See docs/analysis.md for what it needs from the kit.
 #
 # Addresses are guest addresses in the pinned executable. The [hooks] values
 # are sentinels: they point into the zero-filled section padding after .rsrc
@@ -62,11 +62,9 @@ function_alignment = 4
 listings = "analysis/decompiled/Siege.exe-1.19-patch"
 # Curated symbols, relative to this directory.
 globals = "globals.toml"
-# Native replacements for translated functions: the software blend the game
-# compiles at run time, which translated code cannot execute.
-# Disabled 2026-09-16 while the pin moves to the patch's own 1.19 exe: the
-# header names FN_0064cf88, the 1.17.1 build's dxrCopyRectBlend, and this
-# image links elsewhere. Re-point it once the function is located again.
+# Native replacements for translated functions: the software blends the game
+# compiles at run time, which translated code cannot execute
+# (dxrCopyRectBlend and dxrFillRectColorBlend in this image).
 overrides = "native/dxr_blend.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
@@ -182,5 +180,8 @@ required_dirs = ["ArtLib", "Interface", "Maps", "Movies"]
 # Galaxy client and its wrapper, the two Dfx libraries): x86 Windows code
 # the kit stands in for or stubs. The WMV movies stay in until the kit
 # decides whether it can play them; the game's language files (*.ini) stay.
+# The patch's other executables (the Steam and older builds, its launcher
+# tools) are left out by name: a *.exe pattern would drop Siege.exe too.
 exclude = ["__redist", "app", "commonappdata", "tmp",
-           "*.dll", "*.hashdb", "*.id", "*.info", "*.ico"]
+           "*.dll", "*.hashdb", "*.id", "*.info", "*.ico",
+           "Siege_*.exe", "Siege-*.exe", "SiegeGoG.exe", "SiegeSteam.exe", "SoA*.exe"]

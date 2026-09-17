@@ -10,6 +10,8 @@
 static std::vector<uint8_t> arena(0x20000);
 uint8_t *g_mem = arena.data();
 uint32_t g_watch_base = 0, g_watch_len = 0;
+RecompDirty g_dirty[RECOMP_DIRTY_SLOTS];
+uint32_t g_dirty_count = 0;
 void recomp_watch_hit(uint32_t, uint32_t, uint64_t) {}
 static int returned = 0;
 void recomp_callback_return(X86 *) { ++returned; }

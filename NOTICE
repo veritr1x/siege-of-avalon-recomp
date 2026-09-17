@@ -12,8 +12,8 @@ the git submodule at kit/, under its own LICENSE and NOTICE.
 
 Original game files are not distributed in this repository and are not relicensed
 by its MIT license. A translation of the one supported build of the game's
-executable - the community 1.19 patch's GOG build, SiegeGoG.exe run as
-Siege.exe (SHA-256 645eaa1e...ba847) - is
+executable - the community 1.19 patch's own Siege.exe (SHA-256
+8c1fa17e...98fdcf) - is
 generated locally under ignored build/ from the player's own copy by the kit's
 tools; nothing generated is tracked, and the translation claims nothing over the
 original work's behaviour or ownership. The game's executable, data, artwork,
@@ -24,6 +24,11 @@ Ghidra, Capstone, pefile, Unicorn, NumPy, Pillow and innoextract are external
 development tools with their own licenses, not original game dependencies at
 runtime. The kit's NOTICE lists the components it links (Lua, TinySoundFont,
 SDL3, volk, the Vulkan headers) and their licenses.
+
+The port was written with reference to the game's published source,
+SNEG-DEV/siege-of-avalon (LGPL-2.1). Nothing from that source is included:
+the documentation names its files and lines, and the native blend routines in
+native/ were written from the pinned executable's behaviour.
 
 The installer this port was measured from also contains third-party Windows
 components that are not part of the port and are excluded from every bundle:

@@ -22,12 +22,15 @@ the kit's CI, `game` needs your installation, `gpu` needs a Metal device,
 The game-backed suites are Populous-shaped today (they read the entity table
 and camera `game.toml` names, and `--gameplay` wants
 `smoke/native-options.script`). They become meaningful for this game once
-the sentinels in `game.toml` are real addresses and a smoke script exists;
-until then report them as not run, not as passing.
+the sentinels in `game.toml` are real addresses; until then report them as
+not run, not as passing. The smoke scripts under `smoke/` drive the smoke
+host (`build/recomp/pop_smoke` with `RECOMP_PROFILE_DIR`, `RECOMP_SCRIPT` and
+`RECOMP_HOST_DUMP_DIR`); `smoke/world1080.script` plays into the level at
+1920x1080 and `smoke/hover1080.script` measures hover frame rates.
 
 ## Bring-up checks
 
-`tools/analyze.py` leaves `analysis/decompiled/Siege.exe-1.19/summary.txt` with
+`tools/analyze.py` leaves `analysis/decompiled/Siege.exe-1.19-patch/summary.txt` with
 the function count Ghidra discovered and how many decompiled.
 `tools/build.py --regenerate` writes `build/recomp/translate-report.json`
 once the translator gets past its discovery gates; its

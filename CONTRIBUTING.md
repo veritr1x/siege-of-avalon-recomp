@@ -22,14 +22,15 @@ and keeping [docs/analysis.md](docs/analysis.md) true.
   (`brew install innoextract`).
 - The community 1.19 patch, `SoA Anthology Patch 1.19 SteamGoG-Version.zip`.
 
-The executable must be the patch's GOG build, `SiegeGoG.exe`, in place of
-`Siege.exe`, with SHA-256:
+The executable must be the patch's own `Siege.exe` (its launcher reads 1.19),
+with SHA-256:
 
 ```text
-645eaa1e2725a58163932a1016e6560c174754b0bdd0a2f2970b25a0fe4ba847
+8c1fa17e17dbb6654d4fc9e81ca76394324000e34092c4ff466c2239e098fdcf
 ```
 
-It was linked 2025-06-09 with Embarcadero Delphi. The loader refuses other
+It was linked 2026-01-31 with Embarcadero Delphi; unpacking the patch over
+the installation puts it in place. The loader refuses other
 binaries because translated addresses and data layouts are tied to this
 image. Do not bypass the hash to add support for another version; a second
 version is a second `game.toml`.
@@ -44,7 +45,6 @@ the game:
 ```sh
 innoextract --extract --output-dir original/patched "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
 unzip -o "/path/to/SoA Anthology Patch 1.19 SteamGoG-Version.zip" -d original/patched
-mv original/patched/SiegeGoG.exe original/patched/Siege.exe
 .venv/bin/python tools/setup.py --install original/patched --link-only
 ```
 
@@ -67,7 +67,7 @@ as above). It does not download the game. Then export the listings:
 
 `tools/analyze.py` imports the executable into a disposable Ghidra project,
 runs Ghidra's default analyzers and exports translation inputs into ignored
-`analysis/decompiled/Siege.exe-1.19` with the kit's export script; the log is
+`analysis/decompiled/Siege.exe-1.19-patch` with the kit's export script; the log is
 `build/analyze.log`. The kit's own `tools/setup.py` without `--link-only`
 is not used here: it exports with analysis off and expects a curated
 annotation set, which this executable does not have.

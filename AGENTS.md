@@ -2,17 +2,16 @@
 
 Read README.md, CONTRIBUTING.md and docs/analysis.md before a broad change.
 This repository holds only what is Siege of Avalon: Anthology's: config,
-curated symbols, game headers, docs and, once they exist, mods and smoke
-scripts. The runtime, translator, hosts and tools are the kit in `kit/` (a
+curated symbols, native replacements, smoke scripts and docs. The runtime, translator, hosts and tools are the kit in `kit/` (a
 git submodule of recomp-kit); edit those in the kit's own repository and
 bump the submodule here. Game files and translations are private local
 inputs under ignored `original/`, `analysis/` and `build/`.
 
-- The port runs its menus and character creation. docs/analysis.md records
+- The port plays on macOS and the iPad. docs/analysis.md records
   what the executable needs, what the kit lacks and how far each run got;
   keep it current rather than claiming progress in README.md.
-- The pinned executable is the community 1.19 patch's GOG build,
-  `SiegeGoG.exe` moved over `Siege.exe` in `original/patched`. Do not bypass
+- The pinned executable is the community 1.19 patch's own `Siege.exe`, in
+  `original/patched` with the patch unpacked over the install. Do not bypass
   the hash: another build is another `game.toml`. Build with
   `--allow-unmodelled`: its listings decode padding as code.
 - This is a Delphi program, not a Visual C++ one. Expect Unicode (`W`)

@@ -4966,7 +4966,8 @@ UTF-16 records rather than C strings.
   **Adaptations established from source and the pinned binary:** the HLSL is
   in `D3DRenderer.pas`; `D3DShader.pas` declares the 20-byte vertex layout
   (`POSITION` float3 at offset 0, `TEXCOORD` float2 at offset 12). Exact shader
-  strings and layout are recorded in the kit source, with LGPL attribution.
+  strings and layout were recorded in the kit source then; since 2026-09-17
+the kit describes the contract instead and carries only source digests.
   The main layer uploads **R16_UNORM** and uses `fragment_shader_R16_int` to
   decode packed 565 after sampling; the cursor uses RGBA8 and the ordinary
   sample shader. BGRA8 and B5G6R5 resources are also covered. `D3DCompile`

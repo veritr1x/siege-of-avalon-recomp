@@ -103,6 +103,10 @@ class SiegeConfigTests(unittest.TestCase):
         for dll in ("fmod.dll", "Soundlib.dll", "SoADDraw.dll", "Galaxy.dll", "CGalaxy.dll", "Dfx_p6s.dll"):
             self.assertTrue(stage.excluded(Path(dll), exclude), dll)
         self.assertTrue(stage.excluded(Path("goggame-2085372274.hashdb"), exclude))
+        # The patch's other executables stay out; the pinned one stays in.
+        for exe in ("SiegeGoG.exe", "SiegeSteam.exe", "Siege-1.17.1.exe", "Siege_old2.exe",
+                    "SoAMods.exe", "SoADDrawChanger.exe"):
+            self.assertTrue(stage.excluded(Path(exe), exclude), exe)
         self.assertEqual(self.cfg["setup"]["required_dirs"], ["ArtLib", "Interface", "Maps", "Movies"])
         self.assertNotIn("annotations_url", self.cfg["setup"])
 

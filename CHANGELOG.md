@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Kit updated: the level no longer crashes now and then while a worker
+  creates a window, so closing the game from a level works; windowed mode
+  fills the window instead of showing a corner of the game; Direct3D 11
+  frames are drawn on the GPU; the main menu loop no longer spins, and the
+  game presents at the display's 120 Hz; the settings page lists only the
+  rows `game.toml` names, and the window follows the Display setting.
+
+- `game.toml` lists the settings rows (window, performance overlay, keypad),
+  turns off the kit's Populous mod hooks, and leaves the patch's other
+  executables out of app bundles (about 98 MB).
+
+- `tools/analyze.py` moves Ghidra's export to the directory `game.toml`
+  names, so a fresh checkout builds without renaming it by hand.
+
+- README, CONTRIBUTING, AGENTS and NOTICE describe the pinned executable (the
+  patch's own `Siege.exe`), the platforms as they stand, and the source the
+  port consulted. CI runs on Windows too, as the other ports' does.
+
 - The conversation parchment's shadow darkens the scene instead of covering it
   in black, and alpha-dimmed rectangles are drawn. `native/dxr_blend.h`
   computes the two subtract blends DXEffects.DrawSub passes (it had copied
