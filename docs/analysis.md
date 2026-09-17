@@ -6415,5 +6415,19 @@ both modes exited cleanly.
 and the host window follows the Display setting instead of
 `ForceD3DFullscreen`.
 
+**The level's crash, and its ignored close.** Loading a save and waiting in
+the level crashed now and then: "call to 00000000 (return=008d23fa)", then an
+abort because the access violation reached 0080b3e0, Delphi's untranslated
+outermost handler. 008d23e4 is `StdWndProc` calling a freed object instance.
+A thread trace showed game thread 3 creating a window whose procedure is
+00959cb0, VCL's `InitWndProc`, which reads the global `CreationControl` set
+just before `CreateWindowEx`. The kit's import checkpoints could switch
+threads between setting and reading it, so thread 3's first message took the
+main thread's control. Window creation now runs without a thread switch (kit
+`6c4a382`). With that build, Cmd+Q from the level with a conversation open
+ended the game in two seconds; the earlier ignored close (a session whose log
+also shows stranded guest threads) was this state.
+
 **Open.** In-game frame rate on the GPU path in the app and on the iPad is not
-yet measured by the player; the iPad build predates `3f39863`.
+yet measured by the player. 0080b3e0 is still untranslated; it is only reached
+by an exception nothing else handles.
