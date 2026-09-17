@@ -8,8 +8,16 @@
 #include <cstdlib>
 #include <string>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <vector>
+#ifdef _WIN32
+#include <direct.h>
+#include <io.h>
+#define make_dir(path) _mkdir(path)
+#define R_OK 4
+#else
+#include <unistd.h>
+#define make_dir(path) mkdir(path, 0755)
+#endif
 
 static std::vector<uint8_t> arena(0x01000000);
 uint8_t *g_mem = arena.data();
@@ -33,7 +41,7 @@ int recomp_module_lookup(uint32_t) {
 void recomp_call(X86 *, uint32_t) {}
 
 int os_mkdir(const char *path) {
-    return mkdir(path, 0755);
+    return make_dir(path);
 }
 int os_rename(const char *from, const char *to) {
     return rename(from, to);
@@ -107,7 +115,7 @@ static void write_fixture(const char *guest, int w, int h) {
     for (size_t i = root.size() + 1; i < path.size(); ++i)
         if (path[i] == '/') {
             path[i] = 0;
-            mkdir(path.c_str(), 0755);
+            make_dir(path.c_str());
             path[i] = '/';
         }
     if (!siege_bmp_write(path.c_str(), &img))
