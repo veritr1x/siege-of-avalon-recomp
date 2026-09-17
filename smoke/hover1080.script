@@ -1,0 +1,610 @@
+# Hover over text at 1920x1080 on the D3D11 renderer: the creator's stat
+# rows, swept up and down for about 30 seconds.
+wait 6000
+click left 1142 684
+wait 7000
+click left 960 308
+wait 8000
+dump creator
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+move 890 480
+wait 50
+move 890 500
+wait 50
+move 890 520
+wait 50
+move 890 540
+wait 50
+move 890 560
+wait 50
+move 890 580
+wait 50
+move 890 600
+wait 50
+move 890 620
+wait 50
+move 890 640
+wait 50
+move 890 660
+wait 50
+dump hovered
+wait 1000
