@@ -183,8 +183,9 @@ executables) and seeds it into its own Documents on first launch, about
 1.7 GB, stamped with the executable's SHA-256 so a rebuilt bundle is
 recognised. It runs fullscreen with the game's 1920x1080 layout fitted to
 the display's shape; the kit's pointer gestures apply (a tap
-places the pointer and clicks, a long press right-clicks, the on-screen
-keypad stands in for the keyboard). `tools/ios_logs.py --device <id> --game-dir .` pulls the
+places the pointer and clicks, a long press right-clicks) and the on-screen
+controls start on the pad with the KEYS tab beside it, mapped as
+[Controls](#controls) describes. `tools/ios_logs.py --device <id> --game-dir .` pulls the
 app's Documents back to `build/ios-pull`.
 
 ## Play on an Android tablet
@@ -201,6 +202,34 @@ package, after the translation steps under [Build on macOS](#build-on-macos):
 ```
 
 Record the device, GPU and what worked in [docs/analysis.md](docs/analysis.md).
+
+## Controls
+
+A keyboard and mouse play the game as they always did. Without either, the
+on-screen controls open on the pad with the KEYS tab beside it
+(`[controls] default_layout = "pad+keys"` in `game.toml`); the pad's buttons
+send the keys and clicks the game itself reads, so remapping the game's own
+`[keyboard]` block in `siege.ini` remaps them too:
+
+| Pad | Sends | In the game |
+| --- | --- | --- |
+| Either stick | the cursor | move, attack, and every panel; the game reads no arrows, WASD or wheel |
+| Cross / Circle | left / right click | walk, run and attack / cast the current spell |
+| R2 (hold) | Shift | with Cross on a character, force an attack instead of walking |
+| Square | Space | combat mode on and off |
+| Triangle / L1 | I / C | inventory / character sheet |
+| R1 | S | the spell bar, where any spell is one tap away |
+| L2 | Tab | the overlay map |
+| L3 / R3 | J / X | journal / x-ray |
+| Select / Start | F2 / Escape | quick save / close the open dialog, else the main menu |
+| PS | — | the kit's settings page and layout editor |
+
+The dpad is off, and the potion and fast-travel keys are unbound because the
+game ignores them outside Ashes of Avalon. Everything else the game has a
+shortcut for - titles, battle cry, logs, map, options, quests, roster, pause -
+has a button in its own sidebar or bottom bar, which the cursor reaches. The
+kit's built-in tablet pad and split keyboard are what ship; this port adds no
+`layouts/` of its own.
 
 ## Check a change
 

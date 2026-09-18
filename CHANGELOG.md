@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Kit updated: it brings on-screen controls - a PlayStation-style pad beside
+  the split keyboard, JSON layouts, physical controllers, phone layouts with
+  portrait, and an on-device layout editor. This port maps the pad to the keys
+  and clicks Siege actually reads (`TKeyEvent.FormKeyDown` and
+  `AniView1MouseDown`): both sticks point, Cross walks and attacks, Circle
+  casts, R2 is the force-attack Shift, Square toggles combat, Triangle and L1
+  open the inventory and the character sheet, R1 the spell bar, L2 the overlay
+  map, the stick clicks the journal and x-ray, Select quick-saves and Start
+  closes the open dialog or opens the main menu. `[controls]` in `game.toml`
+  holds it, with `default_layout = "pad+keys"`, because character and save
+  names are typed and the spell hotkeys are the digits and F3-F12; the dpad is
+  off and the potion and fast-travel keys are unbound, since the game ignores
+  arrows, WASD, the wheel and those keys outside Ashes of Avalon. No
+  `layouts/` of our own: the built-in tablet pad and keyboard serve. The old
+  `[touch] keypad` knob and the `keypad` settings row are now `[controls]` and
+  `controls`. See the README's Controls table.
+
 - Kit updated: the Windows build decodes video (FFmpeg built with Visual
   Studio's compiler from MSYS2's make), so the intro movies are no longer off
   there; the README's Windows steps install MSYS2's make.
@@ -28,7 +45,7 @@
   game presents at the display's 120 Hz; the settings page lists only the
   rows `game.toml` names, and the window follows the Display setting.
 
-- `game.toml` lists the settings rows (window, performance overlay, keypad),
+- `game.toml` lists the settings rows (window, performance overlay, controls),
   turns off the kit's Populous mod hooks, and leaves the patch's other
   executables out of app bundles (about 98 MB).
 

@@ -154,9 +154,84 @@ mouse_device_right = 0x00a36e48
 # identified.
 camera = 0x00a36e50
 
-[touch]
-# "auto" shows the on-screen keypad when no hardware keyboard is attached.
-keypad = "auto"
+# The on-screen controls. Every binding here is a key the game actually
+# dispatches: TKeyEvent.FormKeyDown (interface/SoAOS.Intrface.KeyEvents.pas in
+# the community source under analysis/source/sneg-1.04, the unit this build's
+# [keyboard] remap panel feeds) is a single case on the virtual key, and the
+# shipped original/patched/siege.ini [keyboard] block binds the same defaults
+# (combat=32, inventory=73, statistic=67, spellbar=83, journal=74, xray=88,
+# quicksave=113). A player who remaps that block is remapping what these pad
+# buttons send, which is the behaviour the game already has for a keyboard.
+[controls]
+# "pad+keys": the pad alone cannot finish the game. Character creation names
+# the character and Save names a game, both typed into a VCL edit, and the
+# spell hotkeys are the digits and F3-F12 (FormKeyDown 48..57 -> SpellHotKey,
+# 114..124 -> SpellHotKeyPlus), which no thirteen-button pad can hold. The
+# kit's built-in keys layout is a full split keyboard, so the KEYS tab covers
+# both; the pad covers everything a hand needs while walking and fighting.
+default_layout = "pad+keys"
+# "mapped": this game reads no joystick. It imports no DirectInput (see the
+# [hooks] note above) and no XInput; the VCL delivers mouse and key messages.
+pad = "mapped"
+
+[controls.mapped]
+# Both sticks drive the cursor. Siege is click-to-move and click-to-attack
+# (TfrmMain.AniView1MouseDown: mbLeft walks, runs or attacks, mbRight casts)
+# and every panel is a hit rectangle, so pointing is the whole game; there is
+# nothing else continuous to drive, because the camera follows the player and
+# FormKeyDown reads no arrow key, the form has no OnMouseWheel handler, and
+# no unit reads WASD. Either thumb can therefore point, and the dpad, which
+# can only send arrows or WASD, is left off rather than sending keys the game
+# discards.
+left_stick = "cursor"
+right_stick = "cursor"
+dpad = "none"
+# The kit default. The sidebar and bottom bar are small hit rectangles at
+# 1080 and the speed follows the square of the deflection, so a half-pushed
+# stick still lands on an inventory slot.
+cursor_speed = 900
+# Move, attack, and every button in the interface.
+cross = "mouse_left"
+# Cast the current spell: Current.Cast on the highlighted figure, else
+# Current.CastPoint at the tile.
+circle = "mouse_right"
+# VK_SPACE -> ToggleCombat, the one toggle a fight needs.
+square = "key:Space"
+# 73 -> DlgInventory, the most-opened screen.
+triangle = "key:I"
+# 67 -> DlgStatistics: the character sheet, where training points are spent.
+l1 = "key:C"
+# 83 -> ToggleSpell opens the spell bar. One button reaches every spell by
+# tapping a glyph, which is why the digit hotkeys are not worth pad buttons.
+r1 = "key:S"
+# VK_TAB -> ShowPersistentMap, the overlay map, held open while travelling.
+l2 = "key:Tab"
+# Shift is the force-attack modifier: with it held, a left click on a
+# character sets AutoFight and attacks instead of walking.
+r2 = "key:LShift"
+# The stick clicks are the awkward seats, so they take the two toggles a
+# player can wait a moment for: 74 -> DlgJournal, 88 -> ToggleXRay
+# (AutoTransparent, to see the party behind a wall).
+l3 = "key:J"
+r3 = "key:X"
+# VK_F2 -> QuickSave, which writes the save and its screenshot.
+select = "key:F2"
+# VK_ESCAPE -> ShowMenu: it closes whichever dialog is open, and on a clear
+# screen posts WM_StartMainMenu, where Save, Load and Options live.
+start = "key:Escape"
+# The kit's own settings page, and through it the layout editor. Bound as the
+# action rather than as F10, because 121 is a spell hotkey in this game
+# (FormKeyDown 114..124) and the key must reach the guest.
+ps = "action:settings"
+#
+# Deliberately unbound: 68/69 (mana and health potion) and 84 (fast travel)
+# read Modselection and do nothing outside Ashes of Avalon, so they would be
+# dead buttons in the Anthology campaign; 65 titles, 66 battle cry, 76
+# adventure log, 77 map, 79 options, 81 quest log, 82 roster, 71 screenshot
+# and 80 pause all have buttons in the game's own bottom bar or sidebar, which
+# the cursor reaches. This repository ships no layouts/: the kit's built-in
+# tablet pad and split keyboard already put every one of these within a thumb,
+# and nothing about this game wants a different pad geometry.
 
 [mods]
 # The mod runtime's Populous integrations hook Populous routines by address;
@@ -166,7 +241,7 @@ builtin = "none"
 [settings]
 # The F10 page's rows. The renderer rows drive Populous's Direct3D renderer
 # and frame loop; Siege draws through Direct3D 11 and its own pacing.
-rows = ["window", "performance_overlay", "keypad"]
+rows = ["window", "performance_overlay", "controls"]
 
 [launcher]
 # The launcher (kit host/launcher/): what it calls the game, the folder names

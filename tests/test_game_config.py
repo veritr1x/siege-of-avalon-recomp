@@ -89,6 +89,38 @@ class SiegeConfigTests(unittest.TestCase):
         self.assertEqual(len(addresses), len(set(addresses)), "sentinels must not alias one another")
         self.assertEqual(self.cfg["translate"]["volatile_reads"], [])
 
+    def test_the_pad_sends_keys_the_game_dispatches(self):
+        """Every key binding must be one TKeyEvent.FormKeyDown acts on."""
+        controls = self.cfg["controls"]
+        self.assertEqual(controls["default_layout"], "pad+keys")
+        self.assertEqual(controls["pad"], "mapped")
+        mapped = controls["mapped"]
+        # FormKeyDown's case labels, by virtual key, and what each one does.
+        dispatched = {"Space": "ToggleCombat", "I": "DlgInventory", "C": "DlgStatistics",
+                      "S": "ToggleSpell", "Tab": "ShowPersistentMap", "J": "DlgJournal",
+                      "X": "ToggleXRay", "F2": "QuickSave", "Escape": "ShowMenu"}
+        bound = {value[len("key:"):] for value in mapped.values()
+                 if isinstance(value, str) and value.startswith("key:")}
+        # LShift is the force-attack modifier in AniView1MouseDown, not a FormKeyDown case.
+        self.assertEqual(bound - {"LShift"}, set(dispatched))
+        # The mouse buttons the game reads: mbLeft walks and attacks, mbRight casts.
+        self.assertEqual((mapped["cross"], mapped["circle"]), ("mouse_left", "mouse_right"))
+        # Pointing is the whole game; no unit reads arrows, WASD or the wheel.
+        self.assertEqual((mapped["left_stick"], mapped["right_stick"], mapped["dpad"]),
+                         ("cursor", "cursor", "none"))
+        # F10 is a spell hotkey here (FormKeyDown 114..124), so the settings page
+        # is reached by the host action instead.
+        self.assertEqual(mapped["ps"], "action:settings")
+        self.assertNotIn("key:F10", set(mapped.values()))
+        # The potion and fast-travel keys check Modselection and are dead in the
+        # Anthology campaign; they must stay unbound.
+        self.assertFalse(bound & {"D", "E", "T"})
+        self.assertIn('#define RECOMP_CONTROLS_DEFAULT_LAYOUT "pad+keys"', self.header)
+        self.assertIn("square=key:Space", self.header)
+        # No layouts/ here: the kit's built-in tablet pad and split keyboard serve.
+        self.assertFalse((ROOT / "layouts").is_dir() and
+                         any((ROOT / "layouts").glob("*.json")))
+
     def test_bundle_exclusions_and_setup(self):
         for pattern in ("__redist", "app", "commonappdata", "tmp", "*.dll", "*.hashdb"):
             self.assertIn(pattern, self.cfg["bundle"]["exclude"])
