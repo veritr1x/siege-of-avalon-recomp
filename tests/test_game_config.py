@@ -54,7 +54,8 @@ class SiegeConfigTests(unittest.TestCase):
                       "RECOMP_HOOK_MOUSE_VTABLE", "RECOMP_HOOK_MOUSE_DEVICE_PTR", "RECOMP_HOOK_MOUSE_DEVICE_RIGHT",
                       "RECOMP_HOOK_CAMERA", "RECOMP_GLOBAL_SIMULATION_TURN_ADDR", "RECOMP_GLOBAL_COMMAND_FRAME_ADDR",
                       "RECOMP_GLOBAL_ENTITY_BASE_ADDR", "RECOMP_GLOBAL_ENTITY_BASE_STRIDE",
-                      "RECOMP_GLOBAL_ENTITY_BASE_COUNT", "RECOMP_TOUCH_KEYPAD_HIDDEN 0"):
+                      "RECOMP_GLOBAL_ENTITY_BASE_COUNT", "RECOMP_CONTROLS_DEFAULT_LAYOUT",
+                      "RECOMP_CONTROLS_PAD", "RECOMP_CONTROLS_MAPPED"):
             self.assertIn("#define " + macro, self.header)
 
     def test_delphi_function_alignment(self):
