@@ -75,14 +75,14 @@ annotation set, which this executable does not have.
 ## Build and run
 
 ```sh
-.venv/bin/python tools/build.py --regenerate --jobs 8 \
-  --allow-unmodelled "Ghidra decodes padding as code"   # translate, then compile
+.venv/bin/python tools/build.py --regenerate --jobs 8   # translate, then compile
 .venv/bin/python tools/build.py --jobs 8                # afterwards
 ```
 
-`--allow-unmodelled` is required for this image: its listings decode the
-padding behind some functions as code, and each such instruction becomes a
-trap at its own address rather than a refused build. The state of the
+The listings decode some string literals and the bytes behind `_Halt0` as
+code; the translator recognises both and leaves them out, so no switch is
+needed. If a build starts asking for `--allow-unmodelled`, that is a
+regression to report, not a flag to add. The state of the
 bring-up is in [docs/analysis.md](docs/analysis.md). `--target ios`
 builds, signs and installs the iPad app (`RECOMP_IOS_TEAM` or `--team`) once
 a macOS build runs. The CMake tree lives in `build/cmake/<preset>`.

@@ -61,10 +61,10 @@ Linux and Windows target current releases supported by SDL3.
 
 | Platform | Verified status | Build command | Remaining checks |
 | --- | --- | --- | --- |
-| macOS 14+ | Plays by hand into the first level, fullscreen (fitted to the display, 1920x1206 on a notched MacBook) and windowed; music, saves, settings, the intro movie and Exit work. The hover smoke runs at 110 new frames a second on a 120 Hz presenter; the world and exit smokes pass. | `.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code"` | Frame rates across a long session; `0080b3e0`, the game's outermost exception handler, is not translated. |
+| macOS 14+ | Plays by hand into the first level, fullscreen (fitted to the display, 1920x1206 on a notched MacBook) and windowed; music, saves, settings, the intro movie and Exit work. The hover smoke runs at 110 new frames a second on a 120 Hz presenter; the world and exit smokes pass. | `.venv/bin/python tools/build.py --regenerate` | Frame rates across a long session; `0080b3e0`, the game's outermost exception handler, is not translated. |
 | iPadOS 17+ | Installs and plays on an iPad Pro, fullscreen. The fitted layout (1920x1324 on an 11-inch M4 iPad Pro) is installed and not yet seen on the device. | `.venv/bin/python tools/build.py --target ios --team <TEAM_ID> --no-install` | Frame rate by hand; the fitted layout by hand. |
-| Linux | Never built or run on Linux. | `.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code" --jobs 8` | Native build/package, Vulkan window/driver validation, movies/audio, input, Save/Load and exit on hardware. |
-| Windows | Never built or run on Windows. | `.venv\Scripts\python tools\build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code" --jobs 8` | Native build/package, Vulkan validation, guest path separators, movies/audio, input, Save/Load and exit on hardware. |
+| Linux | Never built or run on Linux. | `.venv/bin/python tools/build.py --regenerate --jobs 8` | Native build/package, Vulkan window/driver validation, movies/audio, input, Save/Load and exit on hardware. |
+| Windows | Never built or run on Windows. | `.venv\Scripts\python tools\build.py --regenerate --jobs 8` | Native build/package, Vulkan validation, guest path separators, movies/audio, input, Save/Load and exit on hardware. |
 | Android 10+ (Vulkan 1.1) | Never built for Android. | `.venv/bin/python tools/build.py --target android` | APK build, installation, boot, touch play, Save/Load and background/resume on a tablet. |
 
 ## Build on macOS
@@ -81,16 +81,16 @@ innoextract --extract --output-dir original/patched "/path/to/setup_siege_of_ava
 unzip -o "/path/to/SoA Anthology Patch 1.19 SteamGoG-Version.zip" -d original/patched
 .venv/bin/python tools/setup.py --install original/patched --link-only
 .venv/bin/python tools/analyze.py --ghidra-home /path/to/ghidra_12.1.3_PUBLIC
-.venv/bin/python tools/build.py --regenerate --allow-unmodelled "Ghidra decodes padding as code"
+.venv/bin/python tools/build.py --regenerate
 ```
 
 `original/patched` is where `game.toml` expects the game: the GOG install
 with the 1.19 patch unpacked over it. Building it there with
 [innoextract](https://constexpr.org/innoextract/) is the same as linking an
 installed copy you have patched the same way with `tools/setup.py --install
-/path/to/installed/game --link-only`. `--allow-unmodelled` is required: the
-listings decode the padding behind some functions as code, and each such
-instruction becomes a trap at its own address instead of refusing the build.
+/path/to/installed/game --link-only`. The listings decode some string
+literals and the bytes behind `_Halt0` as code; the translator leaves them
+out, so no `--allow-unmodelled` switch is needed.
 `tools/setup.py`, `tools/build.py`, `tools/test.py` and `tools/ios_logs.py`
 are four-line wrappers around the kit's tools; every option is the kit's
 (`--help` lists them). `tools/analyze.py` is this game's own: the kit's setup
@@ -124,8 +124,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r kit/requirements-dev.txt
 .venv/bin/python tools/setup.py --install original/patched --link-only
 .venv/bin/python tools/analyze.py --ghidra-home /path/to/ghidra_12.1.3_PUBLIC
-.venv/bin/python tools/build.py --regenerate --jobs 8 \
-  --allow-unmodelled "Ghidra decodes padding as code"
+.venv/bin/python tools/build.py --regenerate --jobs 8
 RECOMP_EXE="$PWD/original/patched/Siege.exe" \
   build/package/SiegeOfAvalonRecomp/SiegeOfAvalonRecomp
 ```
@@ -154,7 +153,7 @@ and clang/lld on `PATH`, and `C:\msys64\usr\bin` after them:
 py -3 -m venv .venv
 .venv\Scripts\python -m pip install -r kit\requirements-dev.txt
 .venv\Scripts\python tools\setup.py --install original\patched --link-only
-.venv\Scripts\python tools\build.py --regenerate --jobs 8 --allow-unmodelled "Ghidra decodes padding as code"
+.venv\Scripts\python tools\build.py --regenerate --jobs 8
 $env:RECOMP_EXE = (Resolve-Path 'original\patched\Siege.exe').Path
 .\build\package\SiegeOfAvalonRecomp\SiegeOfAvalonRecomp.exe
 ```

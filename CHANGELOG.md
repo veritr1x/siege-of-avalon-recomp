@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Builds without `--allow-unmodelled`. The kit now judges string literals in
+  `.text` before it translates anything and drops the listed bytes behind a
+  call that never returns, so the mutex name behind `_Halt0` and the other
+  literals the listings decode as instructions no longer become traps (3,405
+  before, none now). README, CONTRIBUTING and AGENTS drop the switch from
+  their build commands.
+
 - Kit updated: it brings on-screen controls - a PlayStation-style pad beside
   the split keyboard, JSON layouts, physical controllers, phone layouts with
   portrait, and an on-device layout editor. This port maps the pad to the keys

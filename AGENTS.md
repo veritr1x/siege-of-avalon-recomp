@@ -12,8 +12,8 @@ inputs under ignored `original/`, `analysis/` and `build/`.
   keep it current rather than claiming progress in README.md.
 - The pinned executable is the community 1.19 patch's own `Siege.exe`, in
   `original/patched` with the patch unpacked over the install. Do not bypass
-  the hash: another build is another `game.toml`. Build with
-  `--allow-unmodelled`: its listings decode padding as code.
+  the hash: another build is another `game.toml`. It builds without
+  `--allow-unmodelled`; a build that needs it has regressed.
 - This is a Delphi program, not a Visual C++ one. Expect Unicode (`W`)
   imports throughout, exceptions raised through `RaiseException` and
   `RtlUnwind` as ordinary control flow, a `.tls` directory, delay-loaded
