@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Refresh the fullscreen DirectDraw window after movie mode changes through
+  the updated shared runtime.
+
+- Update the shared runtime with iPad touch-coordinate, stick-motion and frame-color
+  fixes, plus regression coverage for simultaneous keys and mapped pad controls.
+
+- Keep the tablet keyboard and KEYS tabs above the system gesture area;
+  preserve the gamepad when switching from a collapsed keyboard.
+
+- Hide the on-screen keyboard HIDE/KEYS tabs when a hardware keyboard or
+  controller auto-hides the controls; retain the layout switch and saved visibility.
+
 - Builds without `--allow-unmodelled`. The kit now judges string literals in
   `.text` before it translates anything and drops the listed bytes behind a
   call that never returns, so the mutex name behind `_Halt0` and the other

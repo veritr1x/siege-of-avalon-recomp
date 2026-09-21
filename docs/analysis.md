@@ -6501,3 +6501,30 @@ into kit `main` (`623e504`), and this repository pins `main`. On the merge:
 17 native suites, 348 portable tests, the 1920x1342 world smoke and the
 1080 exit smoke pass; 2560x1080 exit passed three of four (the shutdown abort
 above).
+
+
+#### 2026-09-21: shared iPad runtime update
+
+The kit now pins `bbdc3b0`: shared touch coordinates, independent stick motion,
+keyboard visibility, simultaneous-control regression coverage, merged Metal
+Fatigue runtime work and exclusive DirectDraw window-mode notifications.
+The isolated blend harness supplies the runtime's resumable-stack mode constant.
+All ten repository tests passed.
+
+The pinned 1.19 executable was regenerated and compiled through
+`tools/build.py --target smoke --regenerate --jobs 6`, without
+`--allow-unmodelled`. Incremental desktop and signed iOS builds with the final
+kit pin succeeded. With an isolated profile and 1920x1080 drawable, a composited
+touch version of `smoke/world1080.script` completed all 116 steps and exited
+successfully. The final image visibly contains the world, character, NPCs and
+chest inventory. This establishes that local path, not all gameplay.
+
+The signed app was installed in place on the iPad, preserving its container,
+and launched. A physical screenshot confirmed opening animation and controls;
+a level was not played on the device during this update. Existing intermittent
+shutdown failures at wider aspect ratios remain open.
+
+Ignored evidence: `build/ipad-update-local-build.log`,
+`build/ipad-update-ios-final-build.log`, `build/display-mode-smoke/host.log`,
+`build/display-mode-smoke/level.png`, `build/display-mode-config-tests.log`,
+`build/ipad-update-install.json` and `build/ipad-update-device.png`.
