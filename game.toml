@@ -1,12 +1,12 @@
 # game.toml - everything the kit needs to know about Siege of Avalon: Anthology
-# with the community 1.19 patch that is not derivable from the binary. The
-# patch ships several executables; this port pins its own Siege.exe (1.19,
-# linked 2026-01-31, Embarcadero Delphi), which the patch places over the
+# with the community 1.20 patch that is not derivable from the binary. The
+# patch ships several executables; this port pins its own Siege.exe (1.20,
+# linked 2026-10-06, Embarcadero Delphi), which the patch places over the
 # install's. See docs/analysis.md for what it needs from the kit.
 #
 # Addresses are guest addresses in the pinned executable. The [hooks] values
 # are sentinels: they point into the zero-filled section padding after .rsrc
-# (0x00d06800-0x00d06fff; SizeOfImage ends the image at 0x00d07000), which
+# (0x00e74200-0x00e74fff, between .rsrc and .debug), which
 # the game never references, so the kit's hooks compile and never fire. Each
 # one is annotated with why this game has no site for it yet.
 
@@ -16,15 +16,15 @@ name = "Siege of Avalon: Anthology"
 app_name = "SiegeOfAvalonRecomp"
 bundle_id = "dev.recompkit.siege"
 executable = "Siege.exe"
-sha256 = "8c1fa17e17dbb6654d4fc9e81ca76394324000e34092c4ff466c2239e098fdcf"
-# The community 1.19 patch's own Siege.exe (2026-01-31), whose launcher reads
-# 1.19: an ordinary Delphi image - 4.6 MB of code and a 16 MB JCL .debug
+sha256 = "702a7f25dbe7220d172929dff44eeb5f5d080004fde926b4b4c41ada4a81e019"
+# The community 1.20 patch's own Siege.exe (2026-10-06), whose launcher reads
+# 1.20: an ordinary Delphi image - 4.7 MB of code and a 16 MB TD32 .debug
 # section - linked at 0x00800000. The kit takes the base from here
 # (RECOMP_IMAGE_BASE) and loads without relocating, which this image allows.
 # The patch's SiegeGoG.exe, pinned until 2026-09-16, is the same game built
 # for GOG but labelled 1.17.1.
 image_base = 0x00800000
-entry_point = 0x00c79198
+entry_point = 0x00c7e218
 guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 # Where a developer checkout finds the game, relative to the repository root.
 # tools/setup.py links your installation here; an innoextract of the GOG
@@ -33,9 +33,9 @@ developer_exe = "original/patched/Siege.exe"
 # The game selects system DirectDraw on Windows 6.1 (default build 7601).
 windows_version = "6.1"
 # The arena grows past the kit's 256 MB so Dfx_p6s.dll maps at its preferred
-# base 0x10000000 (no relocation support; Ghidra cannot rebase the listing).
-# The 1.19 image is 21.8 MB - 4.6 MB of code and a 16 MB JCL .debug section -
-# so it ends at 0x01dc0000, above the kit's default heap start of 0x01000000.
+# base 0x10000000, so this module needs no relocation.
+# The 1.20 image is 22.0 MB - 4.7 MB of code and a 16 MB TD32 .debug section -
+# so it ends at 0x01db6000, above the kit's default heap start of 0x01000000.
 # The arena keeps everything above that: rounding to the next 2 MB rather than
 # to 32 MB leaves the heap the size the runtime's own tests expect of it.
 heap_base = 0x01e00000
@@ -59,7 +59,7 @@ function_alignment = 1
 function_alignment = 4
 # Ghidra listing directory holding functions.tsv and functions/*.asm,
 # relative to the repository root. tools/analyze.py exports them.
-listings = "analysis/decompiled/Siege.exe-1.19-patch"
+listings = "analysis/decompiled/Siege.exe-1.20-patch"
 # Curated symbols, relative to this directory.
 globals = "globals.toml"
 # Native replacements for translated functions: the software blends the game
@@ -69,65 +69,20 @@ globals = "globals.toml"
 overrides = "native/siege_native.h"
 # The kit's translator wants a visual-phase counter; this game has none that
 # has been audited. Sentinel, and no reads are rewritten.
-animation_counter = 0x00a36e00
+animation_counter = 0x00e74e00
 volatile_reads = []
-# Delphi builds an interface adapter for every method an interface exposes:
-# "ADD dword ptr [ESP+4], -8" to bias Self, then a JMP to the implementation.
-# There are 434 of them in this image and Ghidra lists none - they are packed
-# without padding or alignment and are only ever named by a vtable slot. The
-# scan does find them, and then withdraws each one because the address they
-# all jump to is not an entry point either: 0x00412250 sits in a two-byte gap
-# behind FUN_00412228, so nothing lists it. Naming it keeps the thunks, and
-# with them every interface call in the game.
-#
-# Only this one. Eleven other withdrawn targets pass the "looks like code"
-# heuristic and most are plainly misdecoded ("ADD AL,0x8B; SALC"); an address
-# that fixes nothing is not free, because naming an entry moves the
-# boundaries discovery settles on.
-# 0x00664a28 is a real function - PUSH EBP; MOV EBP,ESP; MOV ECX,0x3e - in a
-# gap, reached through a data pointer when a new game leaves character
-# creation. Discovery recovered it, cut it short of its own forward jump to
-# 0x00667242, took that jump for a dispatch that went nowhere and withdrew
-# the block; the call then returned zero into a JMP EAX trampoline. Named as
-# an entry it is decoded whole.
-# Functions no recovery pass reaches: absent from the Ghidra listing, named by
-# no data pointer, and only ever called indirectly. A run that needs one says
-# so - "call to unknown target <addr>" - and that address goes here.
-#
-# 00c2bd8c is a Delphi method in the unlisted gap that follows FUN_00c2bbc4
-# (which ends at 00c2bd89, then three bytes of LEA EAX,[EAX+0x0] padding). It
-# is four-byte aligned and opens PUSH EBP / MOV EBP,ESP / ADD ESP,-0x54, and
-# the caller that needs it returns to 00c2e98b. The 1.17.1 pin wanted
-# 00412250 and 00664a28 for the same reason; neither address is this
-# function, so both left with the pin move on 2026-09-16.
-#
-# 00994fe8 is the same shape - four-byte aligned, PUSH EBP / MOV EBP,ESP /
-# PUSH ECX / PUSH EBX / PUSH ESI / PUSH EDI, after a RET and one MOV EAX,EAX
-# of padding - and the menus, the character creator and a level all reach it.
-#
-# 00c63520 is a published method: a TMethod whose Code word the form fires as
-# an event (CALL [EBX+0x258] with Self in [EBX+0x25c], at 009664ed). Nothing
-# in the image names it - the .dfm binds it by NAME through RTTI, so neither
-# the data-pointer scan nor the instruction-immediate scan can see it - and it
-# sits in the 00c634dc..00c63824 gap behind a run of UTF-16 text. It opens
-# PUSH EBP / MOV EBP,ESP / ADD ESP,-0xc / MOV [EBP-8],ECX / MOV [EBP-0xc],EDX
-# / MOV [EBP-4],EAX, the three-register Delphi convention. Without it the run
-# reports "call to unknown target 00c63520" from 009664f3 and then dies on a
-# nil call at 009665c8.
-#
-# 00b991c0 is the same shape again - four-byte aligned behind a run of UTF-16
-# text, PUSH EBP / MOV EBP,ESP / ADD ESP,-0x64 / PUSH EBX / PUSH ESI / PUSH EDI
-# / XOR EBX,EBX - reached only indirectly (the caller returns to 00b4ef1d)
-# while playing. Without it the run reports "call to unknown target 00b991c0",
-# the call returns zero, and the guest dies of a SIGBUS with its stack pointer
-# at ffffffec.
-#
-# 00c4d760 is another event handler: four-byte aligned after a RET and a
-# MOV EAX,EAX, PUSH EBP / MOV EBP,ESP / ADD ESP,-0x24 / MOV [EBP-0x1c],EDX /
-# MOV [EBP-4],EAX, and called only as a TMethod (CALL [EBX+4], return
-# 00aaad7d). The listing folds it into FUN_00c4d6b0, which it takes to run on
-# to 00c4dd88. Missing, the run reports "call to unknown target 00c4d760".
-entry_points = [0x00994fe8, 0x00c2bd8c, 0x00c63520, 0x00b991c0, 0x00c4d760]
+# Event handlers bound by name through Delphi RTTI need verified entries
+# if discovery cannot reach them. Addresses from earlier patch builds must
+# never be carried forward to another image.
+# TD32 System.IOUtils.TPath.Create is invoked through the unit table, but
+# Ghidra omitted its body. Seeding its real entry preserves all three
+# finally continuations and the frame-restoring epilogue at 0x00c7d275.
+entry_points = [0x00c7ce10]
+# The program body ends CALL System._Halt0 at 0x00c7e3c5. Ghidra then
+# misdecodes its inline UTF-16 mutex/title strings, including the Delphi
+# UnicodeString header at 0x00c7e400, as instructions. These bytes are data:
+# keep them out of discovery and fail if a real branch ever names them.
+untranslated_ranges = [{start = 0x00c7e3ca, end = 0x00c7e42c, on_branch = "fail"}]
 
 [hooks]
 # Every address here is a sentinel: the kit's hooks are shaped by the game the
@@ -136,23 +91,23 @@ entry_points = [0x00994fe8, 0x00c2bd8c, 0x00c63520, 0x00b991c0, 0x00c4d760]
 # that game's draw-loop waits. This game imports GetTickCount and
 # QueryPerformanceCounter and paces with timeSetEvent; no wait site has been
 # identified.
-frame_clock_begin = 0x00a36e10
-frame_clock_wait = 0x00a36e14
-frame_clock_wait_clamp = 0x00a36e18
-frame_clock_clamp_deadline = 0x00a36e20
-frame_clock_wait_deadline = 0x00a36e24
+frame_clock_begin = 0x00e74e10
+frame_clock_wait = 0x00e74e14
+frame_clock_wait_clamp = 0x00e74e18
+frame_clock_clamp_deadline = 0x00e74e20
+frame_clock_wait_deadline = 0x00e74e24
 # dx/ddraw.cpp: mouse-pointer surface globals, for a host-drawn pointer. Not
 # identified; the game draws its own cursor from ArtLib sprites.
-cursor_surface_ptrs = [0x00a36e30, 0x00a36e34]
+cursor_surface_ptrs = [0x00e74e30, 0x00e74e34]
 # host/input_gate.cpp: a DirectInput mouse device and its vtable. This game
 # imports no DirectInput; the VCL delivers mouse input as window messages,
 # so these will never be real.
-mouse_vtable = 0x00a36e40
-mouse_device_ptr = 0x00a36e44
-mouse_device_right = 0x00a36e48
+mouse_vtable = 0x00e74e40
+mouse_device_ptr = 0x00e74e44
+mouse_device_right = 0x00e74e48
 # host/smoke_main.cpp: the camera record the smoke script inspects. Not
 # identified.
-camera = 0x00a36e50
+camera = 0x00e74e50
 
 # The on-screen controls. Every binding here is a key the game actually
 # dispatches: TKeyEvent.FormKeyDown (interface/SoAOS.Intrface.KeyEvents.pas in

@@ -1,6 +1,6 @@
 // screen_layout.h - Siege of Avalon's 1920x1080 layout, fitted to the display.
 //
-// The 1.19 build has three layouts - 800x600, 1280x720 and 1920x1080 - each a
+// The 1.20 build has three layouts - 800x600, 1280x720 and 1920x1080 - each a
 // packed record of screen size, map viewport and HUD positions
 // (TScreenResolutionData, engine/SoAOS.Types.pas in the game's source). The
 // game copies the chosen one into its global ScreenMetrics with _CopyRecord
@@ -30,12 +30,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// ---- addresses in the patch's 1.19 Siege.exe --------------------------------
-#define SIEGE_CFULLHD 0x00c852f2u     // cFullHD, the 1080 record in .data
-#define SIEGE_COPY_RECORD 0x0080dbb4u // System._CopyRecord(Dest, Source, TypeInfo)
-#define SIEGE_MOUSE_DOWN 0x00c3fcbcu  // TfrmMain.FormMouseDown
-#define SIEGE_MOUSE_MOVE 0x00c4090cu  // TfrmMain.FormMouseMove
-#define SIEGE_SPELLBAR_ACTIVE 0x478u  // TfrmMain.FSpellBarActive, a byte
+// ---- addresses in the patch's 1.20 Siege.exe --------------------------------
+#define SIEGE_CFULLHD 0x00c8a312u     // cFullHD, the 1080 record in .data
+#define SIEGE_COPY_RECORD 0x0080dc08u // System._CopyRecord(Dest, Source, TypeInfo)
+#define SIEGE_MOUSE_DOWN 0x00c445b4u  // TfrmMain.FormMouseDown
+#define SIEGE_MOUSE_MOVE 0x00c45204u  // TfrmMain.FormMouseMove
+#define SIEGE_SPELLBAR_ACTIVE 0x488u  // TfrmMain.FSpellBarActive, a byte
 
 // ---- the record, packed -----------------------------------------------------
 enum {
@@ -391,13 +391,13 @@ __attribute__((weak)) void siege_fit_layout(void) {
             l.h);
 }
 
-void fn_0080dbb4(X86 *c);
+void fn_0080dc08(X86 *c);
 __attribute__((weak)) void siege_copy_record(X86 *c) {
     if (c->r[R_EDX] == SIEGE_CFULLHD)
         siege_fit_layout();
-    fn_0080dbb4(c);
+    fn_0080dc08(c);
 }
-#define FN_0080dbb4 siege_copy_record
+#define FN_0080dc08 siege_copy_record
 
 // The spell bar's hit test compares Y with its 1080 rows, 966 to 1075, as
 // constants (TfrmMain.FormMouseDown and FormMouseMove, engine/AniDemo.pas).
@@ -416,15 +416,15 @@ static inline void siege_spellbar_y(X86 *c) {
     else if (y >= 966 && y < 1075)
         wr32(at, 965);
 }
-void fn_00c3fcbc(X86 *c);
+void fn_00c445b4(X86 *c);
 __attribute__((weak)) void siege_form_mouse_down(X86 *c) {
     siege_spellbar_y(c);
-    fn_00c3fcbc(c);
+    fn_00c445b4(c);
 }
-#define FN_00c3fcbc siege_form_mouse_down
-void fn_00c4090c(X86 *c);
+#define FN_00c445b4 siege_form_mouse_down
+void fn_00c45204(X86 *c);
 __attribute__((weak)) void siege_form_mouse_move(X86 *c) {
     siege_spellbar_y(c);
-    fn_00c4090c(c);
+    fn_00c45204(c);
 }
-#define FN_00c4090c siege_form_mouse_move
+#define FN_00c45204 siege_form_mouse_move

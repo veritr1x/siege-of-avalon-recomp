@@ -31,7 +31,7 @@ static inline int dxr_in_arena(uint32_t at, uint32_t n) {
 // surfaces arrive on odd addresses, which is the tell. An earlier build of
 // 1.19 did pad the record; the pinned patch build does not.
 enum {
-    DXR_SURF_COLORTYPE = 0,  // 1 byte, and nothing pads it
+    DXR_SURF_COLORTYPE = 0, // 1 byte, and nothing pads it
     DXR_SURF_WIDTH = 1,
     DXR_SURF_HEIGHT = 5,
     DXR_SURF_WIDTHBIT = 9,
@@ -246,7 +246,7 @@ static void dxr_blit_blend(uint32_t dst, uint32_t src, const int32_t dr[4], cons
     }
 }
 
-// dxrCopyRectBlend, at 0x00a52780 in the patch's 1.19 build (0x0064cf88 in
+// dxrCopyRectBlend, at 0x00a57838 in the patch's 1.20 build (0x0064cf88 in
 // the 1.17.1 one it was found in). The recompile changed its register
 // allocation, not its shape: the same 180-instruction body, reached from the
 // same draw that locks the destination, blends, and unlocks.
@@ -267,7 +267,8 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
     const int32_t alpha = (int32_t)rd32(sp + 0x0c);
     const uint32_t key_on = rd32(sp + 0x08) & 0xffu;
     const uint32_t key = rd32(sp + 0x04);
-    if (dst && src && dst_rect && src_rect && dxr_in_arena(dst_rect, 16) && dxr_in_arena(src_rect, 16) &&
+    if (dst && src && dst_rect && src_rect && dxr_in_arena(dst_rect, 16) &&
+        dxr_in_arena(src_rect, 16) &&
         dxr_in_arena(dst, DXR_SURF_CHANNELS + 4 * DXR_CHANNEL_STRIDE) &&
         dxr_in_arena(src, DXR_SURF_CHANNELS + 4 * DXR_CHANNEL_STRIDE)) {
         int32_t dr[4], sr[4];
@@ -276,7 +277,6 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
             sr[i] = (int32_t)rd32(src_rect + 4u * (uint32_t)i);
         }
         dxr_blit_blend(dst, src, dr, sr, blend, alpha, key_on != 0, key);
-
     }
     // Return as the original does: the five stack parameters go with it.
     c->r[R_ESP] = sp + 4u + 0x14u;
@@ -284,12 +284,12 @@ static void siege_dxr_copy_rect_blend(X86 *c) {
     recomp_return(c);
 }
 
-#define FN_00a52780 siege_dxr_copy_rect_blend
+#define FN_00a57838 siege_dxr_copy_rect_blend
 
-// dxrFillRectColorBlend, at 0x00a52a34 in the patch's 1.19 build: the other
+// dxrFillRectColorBlend, at 0x00a57aec in the patch's 1.20 build: the other
 // DXR routine that compiles its loop at run time and runs it through
-// TDXRMachine.Run (0x00a52478), so translated, it draws nothing. Its one
-// caller is DXEffects.FillRectAlpha (0x00a53274), which passes
+// TDXRMachine.Run (0x00a57530), so translated, it draws nothing. Its one
+// caller is DXEffects.FillRectAlpha (0x00a5832c), which passes
 // ColorToRGB(Color) | Alpha << 24 and Blend 10 - every alpha-dimmed rectangle
 // the game fills: the shade behind a dialog, and the dark over a level.
 //
@@ -362,4 +362,4 @@ static void siege_dxr_fill_rect_color_blend(X86 *c) {
     recomp_return(c);
 }
 
-#define FN_00a52a34 siege_dxr_fill_rect_color_blend
+#define FN_00a57aec siege_dxr_fill_rect_color_blend

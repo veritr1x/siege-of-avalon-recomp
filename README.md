@@ -5,7 +5,7 @@
 
 A native macOS and iPad recompilation of **Siege of Avalon: Anthology**
 (Digital Tome's Siege of Avalon with all six chapters, as updated by the
-community 1.19 patch), in progress. Original game instructions are translated
+community 1.20 patch), in progress. Original game instructions are translated
 to C ahead of time and compiled with the native host, the way
 [populous-recomp](https://github.com/veritr1x/populous-recomp) and
 [majesty-recomp](https://github.com/veritr1x/majesty-recomp) do it.
@@ -27,9 +27,9 @@ dependency credits.
 
 ## Which executable
 
-This port pins the community **1.19 patch**'s own **`Siege.exe`**
-(`SoA Anthology Patch 1.19 SteamGoG-Version.zip`, linked 2026-01-31; its
-launcher reads 1.19). Unpacking the patch over a GOG installation puts it in
+This port pins the community **1.20 patch**'s own **`Siege.exe`**
+(`SoA Anthology Patch 1.20 SteamGoG-Version.zip`, linked 2026-10-06; its
+file version `1.20.2.2788`). Unpacking the patch over a GOG installation puts it in
 place. It is an **Embarcadero Delphi** build of the game's source, not the
 2000 release's binary, and that shapes the port: it is a VCL application that
 draws through DirectDraw into a small **Direct3D 11** presenter, compiles
@@ -39,9 +39,9 @@ a TLS directory throughout. The patch's other executables (the Steam and
 older builds, its tools) are not translated and are excluded from bundles.
 The measurements are in [docs/analysis.md](docs/analysis.md).
 
-## Status: plays on macOS and the iPad
+## Status: community 1.20 validation in progress
 
-The 1.19 image translates and runs from the launcher through character
+The previous 1.19 image translates and runs from the launcher through character
 creation, the intro movie and the first level, with music, saves and
 settings. On macOS the level and its conversations run at the display's
 120 Hz: Direct3D 11 frames are drawn on the GPU, and windowed and fullscreen
@@ -55,7 +55,8 @@ filled without bars. Frame rates in long play sessions are not yet recorded.
 
 ## Platform status
 
-Status at kit `main` `36a0675`. Build commands assume the private
+Historical platform results below use community 1.19 at kit `main` `36a0675`.
+They do not establish 1.20 compatibility on those platforms. Build commands assume the private
 game installation and Ghidra listings are prepared as described below.
 Linux and Windows target current releases supported by SDL3.
 
@@ -76,16 +77,16 @@ cloning with `--recurse-submodules` checks out that commit automatically.
 git clone --recurse-submodules https://github.com/veritr1x/siege-of-avalon-recomp.git
 cd siege-of-avalon-recomp
 python3 -m venv .venv
-.venv/bin/python -m pip install -r kit/requirements-dev.txt
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r kit/requirements.lock
 innoextract --extract --output-dir original/patched "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
-unzip -o "/path/to/SoA Anthology Patch 1.19 SteamGoG-Version.zip" -d original/patched
+unzip -o "/path/to/SoA Anthology Patch 1.20 SteamGoG-Version.zip" -d original/patched
 .venv/bin/python tools/setup.py --install original/patched --link-only
 .venv/bin/python tools/analyze.py --ghidra-home /path/to/ghidra_12.1.3_PUBLIC
 .venv/bin/python tools/build.py --regenerate
 ```
 
 `original/patched` is where `game.toml` expects the game: the GOG install
-with the 1.19 patch unpacked over it. Building it there with
+with the 1.20 patch unpacked over it. Building it there with
 [innoextract](https://constexpr.org/innoextract/) is the same as linking an
 installed copy you have patched the same way with `tools/setup.py --install
 /path/to/installed/game --link-only`. The listings decode some string
@@ -121,7 +122,7 @@ A Vulkan-capable driver is required for the app:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r kit/requirements-dev.txt
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r kit/requirements.lock
 .venv/bin/python tools/setup.py --install original/patched --link-only
 .venv/bin/python tools/analyze.py --ghidra-home /path/to/ghidra_12.1.3_PUBLIC
 .venv/bin/python tools/build.py --regenerate --jobs 8
@@ -140,19 +141,21 @@ in [docs/analysis.md](docs/analysis.md).
 **Never built or run on Windows, including hardware playback.** The CI
 entry runs portable tests and a stub build.
 
-Prepare the Ghidra listings with the macOS steps above and copy the private
-`analysis/decompiled/Siege.exe-1.19-patch/` directory to the same ignored
-path in the Windows checkout, with the patched installation in
-`original\patched`. Install Python, LLVM's clang/lld and
+Prepare the patched installation at `original\patched`, then export the
+listings with Ghidra 12.1.3 and a compatible JDK on Windows. Existing
+private listings for the exact pinned executable can also be copied from
+another platform into `analysis/decompiled/Siege.exe-1.20-patch/` and
+`analysis/decompiled/Dfx_p6s.dll/`. Install Python, LLVM's clang/lld and
 [MSYS2](https://www.msys2.org/) with `pacman -S make diffutils` (the intro
 movies need FFmpeg, which the kit builds with MSYS2's make and Visual Studio's
 compiler), then use a Visual Studio developer PowerShell with the Windows SDK
 and clang/lld on `PATH`, and `C:\msys64\usr\bin` after them:
 
 ```powershell
-py -3 -m venv .venv
-.venv\Scripts\python -m pip install -r kit\requirements-dev.txt
+py -3.12 -m venv .venv
+.venv\Scripts\python -m pip install --require-hashes --only-binary=:all: -r kit\requirements.lock
 .venv\Scripts\python tools\setup.py --install original\patched --link-only
+.venv\Scripts\python tools\analyze.py --ghidra-home C:/Tools/ghidra_12.1.3_PUBLIC --java-home C:/Tools/jdk-26
 .venv\Scripts\python tools\build.py --regenerate --jobs 8
 $env:RECOMP_EXE = (Resolve-Path 'original\patched\Siege.exe').Path
 .\build\package\SiegeOfAvalonRecomp\SiegeOfAvalonRecomp.exe

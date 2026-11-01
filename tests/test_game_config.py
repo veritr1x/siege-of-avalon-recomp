@@ -7,10 +7,10 @@ ROOT = Path(__file__).resolve().parents[1]
 KIT = ROOT / "kit"
 
 # The zero-filled section padding after .rsrc in the pinned Siege.exe: .rsrc
-# ends at 0x00d06800 and SizeOfImage ends the image at 0x00d07000. Mapped,
+# ends at 0x00e74200 and .debug begins at 0x00e75000. Mapped,
 # never referenced by the game. Every unidentified hook and global lives in
 # its last 512 bytes.
-SENTINEL_LOW, SENTINEL_HIGH = 0x00A36E00, 0x00A37000
+SENTINEL_LOW, SENTINEL_HIGH = 0x00E74E00, 0x00E75000
 
 
 def load_module(name):
@@ -32,12 +32,12 @@ class SiegeConfigTests(unittest.TestCase):
     def test_identity(self):
         self.assertEqual(self.cfg["game"]["id"], "siege")
         self.assertEqual(self.cfg["game"]["executable"], "Siege.exe")
-        # The community 1.19 patch's own Siege.exe, 2026-01-31, whose launcher
-        # reads 1.19; its SiegeGoG.exe, pinned until 2026-09-16, read 1.17.1.
+        # The community 1.20 patch's own Siege.exe, 2026-10-06, whose launcher
+        # reads 1.20; its SiegeGoG.exe, pinned until 2026-09-16, read 1.17.1.
         self.assertEqual(self.cfg["game"]["sha256"],
-                         "8c1fa17e17dbb6654d4fc9e81ca76394324000e34092c4ff466c2239e098fdcf")
+                         "702a7f25dbe7220d172929dff44eeb5f5d080004fde926b4b4c41ada4a81e019")
         self.assertEqual(self.cfg["game"]["image_base"], 0x00800000)
-        self.assertEqual(self.cfg["game"]["entry_point"], 0x00C79198)
+        self.assertEqual(self.cfg["game"]["entry_point"], 0x00C7E218)
         self.assertIn("#define RECOMP_IMAGE_BASE 0x00800000", self.header)
         self.assertEqual(self.cfg["game"]["heap_base"], 0x01E00000)
         self.assertIn('#define RECOMP_APP_NAME "SiegeOfAvalonRecomp"', self.header)
@@ -45,7 +45,7 @@ class SiegeConfigTests(unittest.TestCase):
         self.assertIn('#define RECOMP_GUEST_ROOT "C:\\\\GOG Games\\\\Siege of Avalon - Anthology"', self.header)
         self.assertEqual(self.cfg["developer_exe_path"], (ROOT / "original/patched/Siege.exe").resolve())
         self.assertEqual(self.cfg["listings_path"],
-                         (ROOT / "analysis/decompiled/Siege.exe-1.19-patch").resolve())
+                         (ROOT / "analysis/decompiled/Siege.exe-1.20-patch").resolve())
 
     def test_every_kit_macro_is_rendered(self):
         for macro in ("RECOMP_HOOK_FRAME_CLOCK_BEGIN", "RECOMP_HOOK_FRAME_CLOCK_WAIT",

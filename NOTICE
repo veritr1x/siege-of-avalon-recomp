@@ -12,8 +12,8 @@ the git submodule at kit/, under its own LICENSE and NOTICE.
 
 Original game files are not distributed in this repository and are not relicensed
 by its MIT license. A translation of the one supported build of the game's
-executable - the community 1.19 patch's own Siege.exe (SHA-256
-8c1fa17e...98fdcf) - is
+executable - the community 1.20 patch's own Siege.exe (SHA-256
+702a7f25...81e019) - is
 generated locally under ignored build/ from the player's own copy by the kit's
 tools; nothing generated is tracked, and the translation claims nothing over the
 original work's behaviour or ownership. The game's executable, data, artwork,

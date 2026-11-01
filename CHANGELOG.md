@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Support the community 1.20 patch's main Siege.exe with a new executable
+  hash, entry point and separate analysis directory. Rebind native blending
+  and fitted-layout hooks, including the moved spell-bar field, and move
+  unidentified hooks out of the new image's code.
+- Select Ghidra's Windows launcher on Windows and read analysis metadata as
+  UTF-8.
+
 - Refresh the fullscreen DirectDraw window after movie mode changes through
   the updated shared runtime.
 

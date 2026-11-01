@@ -44,7 +44,7 @@ jobs:
       - name: Contributor tools
         run: |
           python3 -m venv .venv
-          ${{ matrix.python }} -m pip install -r kit/requirements-dev.txt
+          ${{ matrix.python }} -m pip install --require-hashes --only-binary=:all: -r kit/requirements.lock
       - name: Portable tests (the kit's suites plus this game's config)
         run: |
           ${{ matrix.python }} tools/test.py

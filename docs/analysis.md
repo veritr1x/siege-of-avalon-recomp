@@ -6528,3 +6528,82 @@ Ignored evidence: `build/ipad-update-local-build.log`,
 `build/ipad-update-ios-final-build.log`, `build/display-mode-smoke/host.log`,
 `build/display-mode-smoke/level.png`, `build/display-mode-config-tests.log`,
 `build/ipad-update-install.json` and `build/ipad-update-device.png`.
+
+
+## Community patch 1.20 migration (2026-10-25)
+
+The supported image is now the main `Siege.exe` from
+`SoA Anthology Patch 1.20 SteamGoG-Version.zip`, linked 2026-10-06,
+file version `1.20.2.2788`.
+The archive SHA-256 is
+`c1374d64e6ba6b0116c27bbebf28de5e0d636d06ace8de71e147e5ddaa0bbee1`;
+the executable SHA-256 is
+`702a7f25dbe7220d172929dff44eeb5f5d080004fde926b4b4c41ada4a81e019`.
+The alternative Steam, GOG and unspecific executables are not this pin.
+
+The image stays at `0x00800000`, enters at `0x00c7e218`, and has
+`SizeOfImage=0x015b6000`. The existing `heap_base=0x01e00000` still clears
+its end, `0x01db6000`. DigiFX is unchanged: `Dfx_p6s.dll` has SHA-256
+`cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13`
+and stays at its preferred `0x10000000`.
+
+Native replacement addresses were checked against the embedded FB09/TD32
+procedure/data symbols, then the executable bytes. They were not shifted
+by one assumed offset:
+
+| Binding | 1.20 address |
+| --- | --- |
+| `Dxrender.dxrCopyRectBlend` | `0x00a57838` |
+| `Dxrender.dxrFillRectColorBlend` | `0x00a57aec` |
+| `System._CopyRecord` | `0x0080dc08` |
+| `Soaos.Types.cFullHD` | `0x00c8a312` |
+| `Anidemo.TfrmMain.FormMouseDown` | `0x00c445b4` |
+| `Anidemo.TfrmMain.FormMouseMove` | `0x00c45204` |
+
+`cFullHD` still holds 1920x1080, a 1823x997 map viewport, and the first
+hit rectangle starts at X=1846; its packed record offsets remain valid.
+Both mouse handlers now test the spell-bar-active byte at `Self+0x488`
+(`0x00c4461b` and `0x00c4523e`), rather than the old `Self+0x478`.
+The spell-bar row constants remain 966, 999, 1075 and 1000.
+The native layout adapter uses the new field offset.
+
+Unidentified hooks/globals moved into zero-filled padding
+`0x00e74e00..0x00e74eff`, after `.rsrc` ends at `0x00e74200` and before
+`.debug` begins at `0x00e75000`. Old 1.19 manual function entries were
+removed; any entry needed by the new image must be verified in that image.
+Listings have their own `Siege.exe-1.20-patch` directory.
+
+The Windows installation was backed up in full before applying the patch.
+Existing player settings were retained while new defaults were added.
+All 1,961 other patch payload files were verified against the archive after
+installation; saves were not replaced. No game files, listings, generated
+code, backups or player profiles are published.
+
+The eight configuration tests and both native blend/layout harnesses pass
+on Windows with LLVM-MinGW. The harnesses were configured and built through
+the kit build API. Historical macOS/iPad observations above apply to 1.19;
+1.20 requires new validation on those platforms.
+
+
+The first 1.20 translation correctly stopped at the dangling-target gate:
+Ghidra listed the strings after the entry body's nonreturning `CALL
+System._Halt0` (`0x00c7e3c5`) as code, ending in a fabricated dispatch to
+`0x00c7e404`, inside a UnicodeString header. `System._Halt0` is a closed
+shutdown loop whose exit path calls `ExitProcess`; the strings cannot be
+reached by fallthrough. The port explicitly excludes the verified data
+range `0x00c7e3ca..0x00c7e42b` from translation with `on_branch="fail"`.
+This includes only the null padding, UTF-16 mutex name and title constant;
+it does not exclude any real instructions. A real control-flow edge into
+that range remains a build error. No missing-target or instruction gate is
+relaxed, and no generated source is edited.
+
+The first translated Windows boot exposed a missing initializer. TD32 names
+`System.IOUtils.TPath.Create` at `0x00c7ce10`, size 1,129 bytes, ending at
+`0x00c7d278`. Ghidra omitted this function; pointer recovery split its three
+finally scopes into fragments and omitted the continuation at `0x00c7d092`.
+The cleanup returned without restoring EBP, so later unit-table lookups read
+TPath locals instead of the table and skipped `Vcl.Graphics.initialization`.
+The first font allocation then failed with an uninitialized resource manager.
+The port seeds the verified constructor entry so discovery owns its cleanup
+and continuation chain together. This is an entry in the actual executable,
+not a replacement implementation or a generated-code edit.

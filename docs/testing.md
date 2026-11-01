@@ -30,7 +30,7 @@ host (`build/recomp/pop_smoke` with `RECOMP_PROFILE_DIR`, `RECOMP_SCRIPT` and
 
 ## Bring-up checks
 
-`tools/analyze.py` leaves `analysis/decompiled/Siege.exe-1.19-patch/summary.txt` with
+`tools/analyze.py` leaves `analysis/decompiled/Siege.exe-1.20-patch/summary.txt` with
 the function count Ghidra discovered and how many decompiled.
 `tools/build.py --regenerate` writes `build/recomp/translate-report.json`
 once the translator gets past its discovery gates; its

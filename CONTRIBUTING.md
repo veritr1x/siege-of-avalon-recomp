@@ -10,7 +10,7 @@ and keeping [docs/analysis.md](docs/analysis.md) true.
 
 ## Prerequisites
 
-- Python 3.9 or later; create `.venv` and install `kit/requirements-dev.txt`.
+- Python 3.9 or later; create `.venv` and install the kit's hashed `requirements.lock`.
 - Native builds on macOS: Apple Silicon, Xcode Command Line Tools and Git.
   CMake and Ninja come from the requirements file. iPad builds need Xcode
   with the iOS SDK and a developer team.
@@ -20,16 +20,16 @@ and keeping [docs/analysis.md](docs/analysis.md) true.
 - Your own copy of Siege of Avalon: Anthology from GOG, either installed or
   as the offline installer plus [innoextract](https://constexpr.org/innoextract/)
   (`brew install innoextract`).
-- The community 1.19 patch, `SoA Anthology Patch 1.19 SteamGoG-Version.zip`.
+- The community 1.20 patch, `SoA Anthology Patch 1.20 SteamGoG-Version.zip`.
 
-The executable must be the patch's own `Siege.exe` (its launcher reads 1.19),
+The executable must be the patch's own `Siege.exe` (its launcher reads 1.20),
 with SHA-256:
 
 ```text
-8c1fa17e17dbb6654d4fc9e81ca76394324000e34092c4ff466c2239e098fdcf
+702a7f25dbe7220d172929dff44eeb5f5d080004fde926b4b4c41ada4a81e019
 ```
 
-It was linked 2026-01-31 with Embarcadero Delphi; unpacking the patch over
+It was linked 2026-10-06 with Embarcadero Delphi; unpacking the patch over
 the installation puts it in place. The loader refuses other
 binaries because translated addresses and data layouts are tied to this
 image. Do not bypass the hash to add support for another version; a second
@@ -38,13 +38,13 @@ version is a second `game.toml`.
 ## Prepare your game installation
 
 The game directory must contain `Siege.exe` and its `ArtLib`, `Interface`,
-`Maps` and `Movies` directories, with the 1.19 patch unpacked over them.
+`Maps` and `Movies` directories, with the 1.20 patch unpacked over them.
 Either build it in `original/patched`, which is where `game.toml` expects
 the game:
 
 ```sh
 innoextract --extract --output-dir original/patched "/path/to/setup_siege_of_avalon_anthology_1.03.1_(46736).exe"
-unzip -o "/path/to/SoA Anthology Patch 1.19 SteamGoG-Version.zip" -d original/patched
+unzip -o "/path/to/SoA Anthology Patch 1.20 SteamGoG-Version.zip" -d original/patched
 .venv/bin/python tools/setup.py --install original/patched --link-only
 ```
 
@@ -53,6 +53,15 @@ spaces are supported when quoted):
 
 ```sh
 .venv/bin/python tools/setup.py --install "/path/to/GOG Games/Siege of Avalon - Anthology" --link-only
+```
+
+On Windows without symbolic-link privileges, create an ignored directory
+junction first, then run setup against the same installation:
+
+```powershell
+New-Item -ItemType Directory original -Force
+New-Item -ItemType Junction original/patched -Target "D:/GoGGames/Siege of Avalon Anthology"
+.venv/Scripts/python tools/setup.py --install "D:/GoGGames/Siege of Avalon Anthology" --link-only
 ```
 
 Setup verifies the executable and links the installation at ignored
@@ -67,7 +76,7 @@ as above). It does not download the game. Then export the listings:
 
 `tools/analyze.py` imports the executable into a disposable Ghidra project,
 runs Ghidra's default analyzers and exports translation inputs into ignored
-`analysis/decompiled/Siege.exe-1.19-patch` with the kit's export script; the log is
+`analysis/decompiled/Siege.exe-1.20-patch` with the kit's export script; the log is
 `build/analyze.log`. The kit's own `tools/setup.py` without `--link-only`
 is not used here: it exports with analysis off and expects a curated
 annotation set, which this executable does not have.
