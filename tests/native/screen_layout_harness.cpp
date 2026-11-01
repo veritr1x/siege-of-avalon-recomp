@@ -83,14 +83,14 @@ int ddraw_add_mode(int, int, int) {
     return ++modes_offered;
 }
 static int copies;
-void fn_0080dbb4(X86 *) {
+void fn_0080dc08(X86 *) {
     ++copies;
 }
 static int32_t seen_y;
-void fn_00c3fcbc(X86 *c) {
+void fn_00c445b4(X86 *c) {
     seen_y = (int32_t)rd32(c->r[R_ESP] + 4);
 }
-void fn_00c4090c(X86 *c) {
+void fn_00c45204(X86 *c) {
     seen_y = (int32_t)rd32(c->r[R_ESP] + 4);
 }
 

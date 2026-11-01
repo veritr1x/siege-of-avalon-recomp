@@ -8,7 +8,7 @@ exports with analysis switched off, which suits a game whose functions were
 recovered by hand. No such set exists for Siege.exe, so this script imports
 the linked executable, runs Ghidra's default analyzers, and exports the same
 listing layout the kit's translator reads (functions.tsv, functions/*.asm)
-into ignored analysis/decompiled/Siege.exe-1.19-patch (game.toml's listings)
+into ignored analysis/decompiled/Siege.exe-1.20-patch (game.toml's listings)
 with the kit's ExportProgram.java.
 Run tools/setup.py --install ... --link-only first. The export of a 4 MB
 .text section takes a few minutes; the log is build/analyze.log."""
@@ -47,7 +47,7 @@ def main():
         sys.exit("Set --ghidra-home or GHIDRA_HOME to the extracted Ghidra %s directory" % GHIDRA_VERSION)
     ghidra = args.ghidra_home.expanduser().resolve()
     properties = ghidra / "Ghidra/application.properties"
-    if not properties.is_file() or "application.version=%s\n" % GHIDRA_VERSION not in properties.read_text():
+    if not properties.is_file() or "application.version=%s\n" % GHIDRA_VERSION not in properties.read_text(encoding="utf-8"):
         sys.exit("Use Ghidra %s; set --ghidra-home to its extracted directory" % GHIDRA_VERSION)
     cfg = load_game_config().load(ROOT)
     exe = cfg["developer_exe_path"]
@@ -61,13 +61,14 @@ def main():
         env["JAVA_HOME"] = str(args.java_home.expanduser().resolve())
         env["PATH"] = str(Path(env["JAVA_HOME"]) / "bin") + os.pathsep + env.get("PATH", "")
     env["MAXMEM"] = args.max_memory
-    listings = cfg["listings_path"]            # analysis/decompiled/Siege.exe-1.19-patch
+    listings = cfg["listings_path"]            # analysis/decompiled/Siege.exe-1.20-patch
     output = listings.parent                   # analysis/decompiled
     project = output.parent / "ghidra"
     project.mkdir(parents=True, exist_ok=True)
     output.mkdir(parents=True, exist_ok=True)
+    headless = ghidra / "support" / ("analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless")
     command = [
-        str(ghidra / "support/analyzeHeadless"), str(project), cfg["game"]["app_name"],
+        str(headless), str(project), cfg["game"]["app_name"],
         "-import", str(exe), "-deleteProject",
         "-scriptPath", str(KIT / "tools"),
         "-postScript", "ExportProgram.java", str(output),
@@ -76,12 +77,16 @@ def main():
     # ExportProgram names its directory after the imported file (Siege.exe);
     # game.toml names the listings for the build they came from.
     exported = output / exe.name
+    if exported.resolve().parent != (ROOT / "analysis/decompiled").resolve():
+        sys.exit("Refusing to move listings outside analysis/decompiled")
     if exported != listings and exported.is_dir():
         if listings.exists():
+            if listings.resolve().parent != (ROOT / "analysis/decompiled").resolve():
+                sys.exit("Refusing to replace listings outside analysis/decompiled")
             shutil.rmtree(listings)
         exported.rename(listings)
     index = listings / "functions.tsv"
-    if not index.is_file() or len(index.read_text().splitlines()) < 2:
+    if not index.is_file() or len(index.read_text(encoding="utf-8").splitlines()) < 2:
         sys.exit("Ghidra did not export a function index; inspect its output")
     # Auxiliary modules (game.toml [modules.aux.*]) get listings of their own,
     # beside the executable's, from the same Ghidra project and export script.
@@ -90,7 +95,7 @@ def main():
         if digest != module["sha256"]:
             sys.exit("Unsupported %s: SHA-256 %s; expected %s" % (module["name"], digest, module["sha256"]))
         subprocess.run([
-            str(ghidra / "support/analyzeHeadless"), str(project), cfg["game"]["app_name"] + "-" + module["key"],
+            str(headless), str(project), cfg["game"]["app_name"] + "-" + module["key"],
             "-import", str(module["path"]), "-deleteProject",
             "-scriptPath", str(KIT / "tools"),
             "-postScript", "ExportProgram.java", str(output),
@@ -102,7 +107,7 @@ def main():
         "annotations_revision": None,
         "ghidra_analysis": "default analyzers",
         "ghidra_version": GHIDRA_VERSION,
-    }, indent=2) + "\n")
+    }, indent=2) + "\n", encoding="utf-8")
     print("Listings ready in %s. Next: tools/build.py --regenerate" % listings)
 
 

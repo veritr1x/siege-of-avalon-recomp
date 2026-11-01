@@ -10,7 +10,7 @@ inputs under ignored `original/`, `analysis/` and `build/`.
 - The port plays on macOS and the iPad. docs/analysis.md records
   what the executable needs, what the kit lacks and how far each run got;
   keep it current rather than claiming progress in README.md.
-- The pinned executable is the community 1.19 patch's own `Siege.exe`, in
+- The pinned executable is the community 1.20 patch's own `Siege.exe`, in
   `original/patched` with the patch unpacked over the install. Do not bypass
   the hash: another build is another `game.toml`. It builds without
   `--allow-unmodelled`; a build that needs it has regressed.

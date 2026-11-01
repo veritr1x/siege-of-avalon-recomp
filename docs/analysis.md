@@ -6528,3 +6528,152 @@ Ignored evidence: `build/ipad-update-local-build.log`,
 `build/ipad-update-ios-final-build.log`, `build/display-mode-smoke/host.log`,
 `build/display-mode-smoke/level.png`, `build/display-mode-config-tests.log`,
 `build/ipad-update-install.json` and `build/ipad-update-device.png`.
+
+
+## Community patch 1.20 migration (2026-10-25)
+
+The supported image is now the main `Siege.exe` from
+`SoA Anthology Patch 1.20 SteamGoG-Version.zip`, linked 2026-10-06,
+file version `1.20.2.2788`.
+The archive SHA-256 is
+`c1374d64e6ba6b0116c27bbebf28de5e0d636d06ace8de71e147e5ddaa0bbee1`;
+the executable SHA-256 is
+`702a7f25dbe7220d172929dff44eeb5f5d080004fde926b4b4c41ada4a81e019`.
+The alternative Steam, GOG and unspecific executables are not this pin.
+
+The image stays at `0x00800000`, enters at `0x00c7e218`, and has
+`SizeOfImage=0x015b6000`. Its end is `0x01db6000`; the new 32 MiB heap
+start is `0x02000000`. DigiFX is unchanged: `Dfx_p6s.dll` has SHA-256
+`cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13`.
+It relocates from preferred `0x10000000` to `0x01e00000`, below the heap,
+leaving the full 1 GiB arena available for the runtime's allocation regions.
+
+Native replacement addresses were checked against the embedded FB09/TD32
+procedure/data symbols, then the executable bytes. They were not shifted
+by one assumed offset:
+
+| Binding | 1.20 address |
+| --- | --- |
+| `Dxrender.dxrCopyRectBlend` | `0x00a57838` |
+| `Dxrender.dxrFillRectColorBlend` | `0x00a57aec` |
+| `System._CopyRecord` | `0x0080dc08` |
+| `Soaos.Types.cFullHD` | `0x00c8a312` |
+| `Anidemo.TfrmMain.FormMouseDown` | `0x00c445b4` |
+| `Anidemo.TfrmMain.FormMouseMove` | `0x00c45204` |
+
+`cFullHD` still holds 1920x1080, a 1823x997 map viewport, and the first
+hit rectangle starts at X=1846; its packed record offsets remain valid.
+Both mouse handlers now test the spell-bar-active byte at `Self+0x488`
+(`0x00c4461b` and `0x00c4523e`), rather than the old `Self+0x478`.
+The spell-bar row constants remain 966, 999, 1075 and 1000.
+The native layout adapter uses the new field offset.
+
+Unidentified hooks/globals moved into zero-filled padding
+`0x00e74e00..0x00e74eff`, after `.rsrc` ends at `0x00e74200` and before
+`.debug` begins at `0x00e75000`. Old 1.19 manual function entries were
+removed; any entry needed by the new image must be verified in that image.
+Listings have their own `Siege.exe-1.20-patch` directory.
+
+The Windows installation was backed up in full before applying the patch.
+Existing player settings were retained while new defaults were added.
+All 1,961 other patch payload files were verified against the archive after
+installation; saves were not replaced. No game files, listings, generated
+code, backups or player profiles are published.
+
+The eight configuration tests and both native blend/layout harnesses pass
+on Windows with LLVM-MinGW. The harnesses were configured and built through
+the kit build API. Historical macOS/iPad observations above apply to 1.19;
+1.20 requires new validation on those platforms.
+
+
+The first 1.20 translation correctly stopped at the dangling-target gate:
+Ghidra listed the strings after the entry body's nonreturning `CALL
+System._Halt0` (`0x00c7e3c5`) as code, ending in a fabricated dispatch to
+`0x00c7e404`, inside a UnicodeString header. `System._Halt0` is a closed
+shutdown loop whose exit path calls `ExitProcess`; the strings cannot be
+reached by fallthrough. The port explicitly excludes the verified data
+range `0x00c7e3ca..0x00c7e42b` from translation with `on_branch="fail"`.
+This includes only the null padding, UTF-16 mutex name and title constant;
+it does not exclude any real instructions. A real control-flow edge into
+that range remains a build error. No missing-target or instruction gate is
+relaxed, and no generated source is edited.
+
+The first translated Windows boot exposed a missing initializer. TD32 names
+`System.IOUtils.TPath.Create` at `0x00c7ce10`, size 1,129 bytes, ending at
+`0x00c7d278`. Ghidra omitted this function; pointer recovery split its three
+finally scopes into fragments and omitted the continuation at `0x00c7d092`.
+The cleanup returned without restoring EBP, so later unit-table lookups read
+TPath locals instead of the table and skipped `Vcl.Graphics.initialization`.
+The first font allocation then failed with an uninitialized resource manager.
+The port seeds the verified constructor entry so discovery owns its cleanup
+and continuation chain together. This is an entry in the actual executable,
+not a replacement implementation or a generated-code edit.
+
+The seeded initializer run restores EBP and ESP correctly and renders the
+1.20 launcher on Windows. Pressing Play in the video-disabled build then
+reaches JCL's embedded-symbol parser and overflows the host stack between
+`body_00a30e54` and the weak `body_00a30ee4` fragment. TD32 identifies the
+real `TJclTD32InfoParser.AnalyseAlignSymbols` at `0x00a30e54`, size 498,
+ending at `0x00a31045`. Its jump table starts at `0x00a30ee4`; those table
+bytes are not a second function. Seeding the verified parser entry keeps
+its case blocks and record-loop back edge in one body. A new regeneration
+and run confirm that the parser loop remains within its owning function;
+the launcher, menu and character creator render without the host-stack overflow.
+
+The first 1.20 map load reached a 161,349,632-byte allocation with other
+assets already resident. The old 257 MiB arena ran out of guest heap and
+then raised an allocation-related guest exception. The port now requests a
+1 GiB arena with a 32 MiB heap start. DigiFX is relocated from its preferred
+`0x10000000` to `0x01e00000`, after the main image and below the heap; the
+unchanged DLL supplies 5,737 HIGHLOW relocations. This avoids retaining a
+256 MiB allocation ceiling just to accommodate its preferred base. Both
+the loader and translator apply the relocation; the image hash stays pinned.
+
+With that layout the next map-load check gets past the allocation, then
+faults in `System._UStrAsg` after `TGameObject.LoadProperties` resumes with
+EBP one byte below its frame. A hardware watchpoint identifies a string
+reference-count decrement into a saved frame pointer. This is a secondary
+effect: `System._UStrCatN` (`0x0080cbb4`) returns by popping its return
+address, removing a variable number of arguments, then jumping to the
+address. An interior entry at `0x0080cc00` erases the shared static return
+proof, causing the translator to dispatch a continuation already owned by
+the pending native caller. Its epilogue restores the parent frame before
+the pending caller runs that continuation a second time.
+
+The kit now retains the ordinary entry's proven return behind its entry
+selector, preserving the alternate entry's computed-branch contract. The
+native synthetic regression passes 31 checks; removing the ordinary proof
+fails nine assertions, and applying it unconditionally to alternate entries
+fails the callable-continuation check. The kit also validates both tail-call
+macro signatures before compilation, including speculative withdrawal.
+The port pins kit `b1bdfd6`, which includes both corrections and the GDI
+buffer fix below. Full translation passes the strict gates: 28,452 of
+28,586 main-image discoveries survive recovery, with 47,829 entries in
+144 chunks. All 303 constant-table sites decode, with zero dangling
+targets; 4,698 rejected speculative recovery attempts are diagnostics,
+not accepted unmodelled instructions. DigiFX translates 193 of 193
+functions, with 194 entries and zero recovery errors. The launcher,
+headless host and smoke host build on Windows.
+
+Fresh isolated Windows profiles now reach the first map, dismiss Corvus's
+dialogue, move the player through the castle and open the chest interface.
+The game writes its Start of Level autosave. A later run loads that save,
+walks the player and writes a new QuickSave BMP/IDX/MAP/SAV set. A separate
+profile loads that QuickSave, restores the saved world/player position and
+quits through the game menu with exit code zero. These are bounded runtime
+checks, not full-campaign or performance validation. Loading needs more
+than the initial 60-second probe allowance; the successful reload waits
+120 seconds before capturing the world and exiting.
+
+A movie-enabled startup attempt in the video-disabled build exposed a
+separate shared GDI bug. The game's 111x60 bitmap extraction requests
+16-bit RGB565 rows (224 bytes each), while the source bitmap is 32-bit
+(444 bytes each). The old GetDIBits copied the source stride and overwrote
+a Delphi memory-manager list node, causing a later shutdown crash. A
+hardware watchpoint identified the native copy as the writer. The kit now
+converts to the requested format, checks bounds and preserves overlapping
+source rows. Its native drawing suite passes 143 checks, including that
+exact buffer layout. The previously failing startup/creator/host-close
+probe now exits cleanly after 901 presented frames. Movie playback itself
+was disabled in these Windows checks; an unsupported movie attempt is
+handled safely. No shutdown bypass or guest-memory repair is used.
