@@ -6646,7 +6646,7 @@ native synthetic regression passes 31 checks; removing the ordinary proof
 fails nine assertions, and applying it unconditionally to alternate entries
 fails the callable-continuation check. The kit also validates both tail-call
 macro signatures before compilation, including speculative withdrawal.
-The port pins kit `1dcd6e5`, which includes both corrections and the GDI
+The port pins kit `b1bdfd6`, which includes both corrections and the GDI
 buffer fix below. Full translation passes the strict gates: 28,452 of
 28,586 main-image discoveries survive recovery, with 47,829 entries in
 144 chunks. All 303 constant-table sites decode, with zero dangling
