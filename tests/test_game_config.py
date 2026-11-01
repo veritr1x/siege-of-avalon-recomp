@@ -39,7 +39,7 @@ class SiegeConfigTests(unittest.TestCase):
         self.assertEqual(self.cfg["game"]["image_base"], 0x00800000)
         self.assertEqual(self.cfg["game"]["entry_point"], 0x00C7E218)
         self.assertIn("#define RECOMP_IMAGE_BASE 0x00800000", self.header)
-        self.assertEqual(self.cfg["game"]["heap_base"], 0x01E00000)
+        self.assertEqual(self.cfg["game"]["heap_base"], 0x02000000)
         self.assertIn('#define RECOMP_APP_NAME "SiegeOfAvalonRecomp"', self.header)
         self.assertIn('#define RECOMP_EXECUTABLE "Siege.exe"', self.header)
         self.assertIn('#define RECOMP_GUEST_ROOT "C:\\\\GOG Games\\\\Siege of Avalon - Anthology"', self.header)
@@ -61,17 +61,19 @@ class SiegeConfigTests(unittest.TestCase):
     def test_delphi_function_alignment(self):
         self.assertEqual(self.cfg["translate"]["function_alignment"], 4)
 
-    def test_digifx_is_an_auxiliary_module_at_its_preferred_base(self):
-        self.assertEqual(self.cfg["game"]["guest_size"], 0x10100000)
+    def test_digifx_relocates_below_the_heap(self):
+        self.assertEqual(self.cfg["game"]["guest_size"], 0x40000000)
         [dfx] = self.cfg["aux_modules"]
         self.assertEqual(dfx["key"], "dfx")
         self.assertEqual(dfx["name"], "Dfx_p6s.dll")
-        self.assertEqual((dfx["base"], dfx["size"], dfx["function_alignment"]), (0x10000000, 0x28000, 1))
+        self.assertEqual((dfx["base"], dfx["size"], dfx["function_alignment"]), (0x01E00000, 0x28000, 1))
+        self.assertLessEqual(dfx["base"] + dfx["size"], self.cfg["game"]["heap_base"])
         self.assertEqual(dfx["path"], (ROOT / "original/patched/Dfx_p6s.dll").resolve())
         self.assertEqual(dfx["listings_path"], (ROOT / "analysis/decompiled/Dfx_p6s.dll").resolve())
-        self.assertIn("#define RECOMP_GUEST_SIZE 0x10100000u", self.header)
+        self.assertIn("#define RECOMP_GUEST_SIZE 0x40000000u", self.header)
+        self.assertIn("#define RECOMP_LAYOUT_END 0x40000000u", self.header)
         self.assertIn('{"Dfx_p6s.dll", ', self.header)
-        self.assertIn("0x10000000u, 0x00028000u}", self.header)
+        self.assertIn("0x01e00000u, 0x00028000u}", self.header)
 
     def test_windows_version_selects_system_directdraw(self):
         self.assertEqual(self.cfg["game"]["windows_version"], "6.1")

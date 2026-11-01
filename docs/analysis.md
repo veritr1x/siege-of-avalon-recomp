@@ -6542,10 +6542,11 @@ the executable SHA-256 is
 The alternative Steam, GOG and unspecific executables are not this pin.
 
 The image stays at `0x00800000`, enters at `0x00c7e218`, and has
-`SizeOfImage=0x015b6000`. The existing `heap_base=0x01e00000` still clears
-its end, `0x01db6000`. DigiFX is unchanged: `Dfx_p6s.dll` has SHA-256
-`cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13`
-and stays at its preferred `0x10000000`.
+`SizeOfImage=0x015b6000`. Its end is `0x01db6000`; the new 32 MiB heap
+start is `0x02000000`. DigiFX is unchanged: `Dfx_p6s.dll` has SHA-256
+`cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13`.
+It relocates from preferred `0x10000000` to `0x01e00000`, below the heap,
+leaving the full 1 GiB arena available for the runtime's allocation regions.
 
 Native replacement addresses were checked against the embedded FB09/TD32
 procedure/data symbols, then the executable bytes. They were not shifted
@@ -6607,3 +6608,22 @@ The first font allocation then failed with an uninitialized resource manager.
 The port seeds the verified constructor entry so discovery owns its cleanup
 and continuation chain together. This is an entry in the actual executable,
 not a replacement implementation or a generated-code edit.
+
+The seeded initializer run restores EBP and ESP correctly and renders the
+1.20 launcher on Windows. Pressing Play in the video-disabled build then
+reaches JCL's embedded-symbol parser and overflows the host stack between
+`body_00a30e54` and the weak `body_00a30ee4` fragment. TD32 identifies the
+real `TJclTD32InfoParser.AnalyseAlignSymbols` at `0x00a30e54`, size 498,
+ending at `0x00a31045`. Its jump table starts at `0x00a30ee4`; those table
+bytes are not a second function. Seeding the verified parser entry keeps
+its case blocks and record-loop back edge in one body. A new regeneration
+and run are required to establish the result of that curation.
+
+The first 1.20 map load reached a 161,349,632-byte allocation with other
+assets already resident. The old 257 MiB arena ran out of guest heap and
+then raised an allocation-related guest exception. The port now requests a
+1 GiB arena with a 32 MiB heap start. DigiFX is relocated from its preferred
+`0x10000000` to `0x01e00000`, after the main image and below the heap; the
+unchanged DLL supplies 5,737 HIGHLOW relocations. This avoids retaining a
+256 MiB allocation ceiling just to accommodate its preferred base. Both
+the loader and translator apply the relocation; the image hash stays pinned.

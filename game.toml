@@ -32,26 +32,23 @@ guest_root = 'C:\GOG Games\Siege of Avalon - Anthology'
 developer_exe = "original/patched/Siege.exe"
 # The game selects system DirectDraw on Windows 6.1 (default build 7601).
 windows_version = "6.1"
-# The arena grows past the kit's 256 MB so Dfx_p6s.dll maps at its preferred
-# base 0x10000000, so this module needs no relocation.
-# The 1.20 image is 22.0 MB - 4.7 MB of code and a 16 MB TD32 .debug section -
-# so it ends at 0x01db6000, above the kit's default heap start of 0x01000000.
-# The arena keeps everything above that: rounding to the next 2 MB rather than
-# to 32 MB leaves the heap the size the runtime's own tests expect of it.
-heap_base = 0x01e00000
-guest_size = 0x10100000
+# The first 1.20 map requests a 161 MB contiguous allocation in addition to
+# its existing assets. A 1 GiB arena leaves room for those working buffers.
+# DigiFX is relocated below the heap so its old preferred 0x10000000 base
+# cannot cap the runtime's allocation regions at 256 MiB.
+heap_base = 0x02000000
 
-# DigiFX, the sprite RLE/blit library every draw path calls through
-# StartupLibrary's 14-op table. The runtime maps and translates it as a
-# second guest image; LoadLibrary("Dfx_p6s.dll") hands out its base.
+guest_size = 0x40000000
+
 [modules.aux.dfx]
 name = "Dfx_p6s.dll"
 path = "original/patched/Dfx_p6s.dll"
 sha256 = "cc10def9e5bc97feddd6a07dcfd904484ffe112cbfdaf444554521762dc6bd13"
-base = 0x10000000
+# The unchanged DLL has 5,737 HIGHLOW relocations. It clears the main image
+# (ending at 0x01db6000) and its 0x28000 bytes end below the 32 MiB heap.
+base = 0x01e00000
 size = 0x28000
 listings = "analysis/decompiled/Dfx_p6s.dll"
-# A Borland C++ DLL: no function alignment to lean on.
 function_alignment = 1
 
 [translate]
@@ -77,7 +74,10 @@ volatile_reads = []
 # TD32 System.IOUtils.TPath.Create is invoked through the unit table, but
 # Ghidra omitted its body. Seeding its real entry preserves all three
 # finally continuations and the frame-restoring epilogue at 0x00c7d275.
-entry_points = [0x00c7ce10]
+# TD32 TJclTD32InfoParser.AnalyseAlignSymbols is 498 bytes at 0x00a30e54.
+# A weak fragment otherwise owns the switch cases and turns its record loop
+# into mutually recursive host calls. Keep the whole verified function.
+entry_points = [0x00a30e54, 0x00c7ce10]
 # The program body ends CALL System._Halt0 at 0x00c7e3c5. Ghidra then
 # misdecodes its inline UTF-16 mutex/title strings, including the Delphi
 # UnicodeString header at 0x00c7e400, as instructions. These bytes are data:
