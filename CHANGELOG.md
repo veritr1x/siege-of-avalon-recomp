@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Pin the shared kit to `a18ccaf`, including the reviewed runtime, renderer
+  and translator fixes and bounded GetDIBits conversion. Use the hashed
+  contributor dependency lock in setup and CI.
+
 - Support the community 1.20 patch's main Siege.exe with a new executable
   hash, entry point and separate analysis directory. Rebind native blending
   and fitted-layout hooks, including the moved spell-bar field, and move
