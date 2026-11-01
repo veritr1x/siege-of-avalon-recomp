@@ -6,6 +6,10 @@
   hash, entry point and separate analysis directory. Rebind native blending
   and fitted-layout hooks, including the moved spell-bar field, and move
   unidentified hooks out of the new image's code.
+- Give 1.20 map loading a 1 GiB guest arena and relocate DigiFX below the
+  heap. Require the shared translator's entry-specific variadic-return
+  proof, complete tail-call target validation and bounded bitmap extraction
+  in the caller's requested pixel format.
 - Select Ghidra's Windows launcher on Windows and read analysis metadata as
   UTF-8.
 

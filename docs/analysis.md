@@ -6617,7 +6617,8 @@ real `TJclTD32InfoParser.AnalyseAlignSymbols` at `0x00a30e54`, size 498,
 ending at `0x00a31045`. Its jump table starts at `0x00a30ee4`; those table
 bytes are not a second function. Seeding the verified parser entry keeps
 its case blocks and record-loop back edge in one body. A new regeneration
-and run are required to establish the result of that curation.
+and run confirm that the parser loop remains within its owning function;
+the launcher, menu and character creator render without the host-stack overflow.
 
 The first 1.20 map load reached a 161,349,632-byte allocation with other
 assets already resident. The old 257 MiB arena ran out of guest heap and
@@ -6627,3 +6628,52 @@ then raised an allocation-related guest exception. The port now requests a
 unchanged DLL supplies 5,737 HIGHLOW relocations. This avoids retaining a
 256 MiB allocation ceiling just to accommodate its preferred base. Both
 the loader and translator apply the relocation; the image hash stays pinned.
+
+With that layout the next map-load check gets past the allocation, then
+faults in `System._UStrAsg` after `TGameObject.LoadProperties` resumes with
+EBP one byte below its frame. A hardware watchpoint identifies a string
+reference-count decrement into a saved frame pointer. This is a secondary
+effect: `System._UStrCatN` (`0x0080cbb4`) returns by popping its return
+address, removing a variable number of arguments, then jumping to the
+address. An interior entry at `0x0080cc00` erases the shared static return
+proof, causing the translator to dispatch a continuation already owned by
+the pending native caller. Its epilogue restores the parent frame before
+the pending caller runs that continuation a second time.
+
+The kit now retains the ordinary entry's proven return behind its entry
+selector, preserving the alternate entry's computed-branch contract. The
+native synthetic regression passes 31 checks; removing the ordinary proof
+fails nine assertions, and applying it unconditionally to alternate entries
+fails the callable-continuation check. The kit also validates both tail-call
+macro signatures before compilation, including speculative withdrawal.
+The port pins kit `1dcd6e5`, which includes both corrections and the GDI
+buffer fix below. Full translation passes the strict gates: 28,452 of
+28,586 main-image discoveries survive recovery, with 47,829 entries in
+144 chunks. All 303 constant-table sites decode, with zero dangling
+targets; 4,698 rejected speculative recovery attempts are diagnostics,
+not accepted unmodelled instructions. DigiFX translates 193 of 193
+functions, with 194 entries and zero recovery errors. The launcher,
+headless host and smoke host build on Windows.
+
+Fresh isolated Windows profiles now reach the first map, dismiss Corvus's
+dialogue, move the player through the castle and open the chest interface.
+The game writes its Start of Level autosave. A later run loads that save,
+walks the player and writes a new QuickSave BMP/IDX/MAP/SAV set. A separate
+profile loads that QuickSave, restores the saved world/player position and
+quits through the game menu with exit code zero. These are bounded runtime
+checks, not full-campaign or performance validation. Loading needs more
+than the initial 60-second probe allowance; the successful reload waits
+120 seconds before capturing the world and exiting.
+
+A movie-enabled startup attempt in the video-disabled build exposed a
+separate shared GDI bug. The game's 111x60 bitmap extraction requests
+16-bit RGB565 rows (224 bytes each), while the source bitmap is 32-bit
+(444 bytes each). The old GetDIBits copied the source stride and overwrote
+a Delphi memory-manager list node, causing a later shutdown crash. A
+hardware watchpoint identified the native copy as the writer. The kit now
+converts to the requested format, checks bounds and preserves overlapping
+source rows. Its native drawing suite passes 143 checks, including that
+exact buffer layout. The previously failing startup/creator/host-close
+probe now exits cleanly after 901 presented frames. Movie playback itself
+was disabled in these Windows checks; an unsupported movie attempt is
+handled safely. No shutdown bypass or guest-memory repair is used.
