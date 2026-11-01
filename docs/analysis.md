@@ -6677,3 +6677,17 @@ exact buffer layout. The previously failing startup/creator/host-close
 probe now exits cleanly after 901 presented frames. Movie playback itself
 was disabled in these Windows checks; an unsupported movie attempt is
 handled safely. No shutdown bypass or guest-memory repair is used.
+
+
+## Shared kit validation, 2026-11-01
+
+Pin `a18ccafa1e8c98002b2d3f7347b64fa655ebb018` is the merged recomp-kit PR #46 source.
+Its tree matches the reviewed `b1bdfd6` head: all 14 platform CI checks and
+44 game-independent Windows native suites pass. The shared portable suite
+passes 651 tests with four platform skips.
+
+Community 1.20 Windows x64/Vulkan: first map, dialogue/chest interaction, movement, fresh QuickSave creation and a separate reload restoring the world/player position pass. The final reload exits with code zero after 4,604 frames. Shutdown logs a guest-handled null callback from the mouse-updater thread; exception-free teardown is not established.
+
+These are bounded checks using hash-matched inputs and isolated profiles.
+Movies were disabled; full campaigns, performance and new physical-device
+validation are not established. Original inputs and player saves are preserved.
