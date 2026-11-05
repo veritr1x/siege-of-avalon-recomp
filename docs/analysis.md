@@ -6691,3 +6691,17 @@ Community 1.20 Windows x64/Vulkan: first map, dialogue/chest interaction, moveme
 These are bounded checks using hash-matched inputs and isolated profiles.
 Movies were disabled; full campaigns, performance and new physical-device
 validation are not established. Original inputs and player saves are preserved.
+
+## 2026-11-05 browser streaming refresh
+
+Updated to shared kit `1cbd81c`. The real Emscripten 6.0.11 build passes the
+strict translation gates. A Chromium 145 hardware-WebGPU run mounts the
+11,538-file stream and renders the 1.20 launcher, but Play produces black
+output and reports that a D3D11 GPU-rendered target could not be read back.
+Movies-disabled default and CustomDDraw / Nothing attempts both fail this
+way. There are no failed asset requests, JavaScript exceptions or WebGPU
+validation errors; game data is not imported into OPFS. The browser backend
+currently lacks the synchronous readback this path needs. Browser gameplay
+and save/reload are not established. Ten portable game tests pass with the
+MinGW runtime on PATH. See [web.md](web.md) for setup and bounded evidence;
+earlier native/device results above remain historical.
