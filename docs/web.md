@@ -48,22 +48,39 @@ recorded below; compilation alone does not establish gameplay.
 
 ## Local validation
 
-Updated to recomp-kit `1cbd81ca8e6e1ef2cf33f1c27a06f69a00e64b82`, including
-upstream main, optional streaming, the corrected fetch backend and shared
-fixed-function WGSL/empty-transfer fixes. The real Emscripten 6.0.11 build
-passes without `--allow-unmodelled`; this was not a stub build.
+Updated to recomp-kit `9dff77f71928ce55933c6354ee763a8077d17909`. The real
+Emscripten 6.0.11 game build passes without `--allow-unmodelled`. Shared
+worker-safe GPU readback and preserved transfer regions resolve the black
+output after Play. The browser GPU fixture passes 1,004 checks, including
+padded rows, depth checkpoints, command completion and device loss.
 
-On Windows/Chromium 145 with hardware WebGPU, a fresh streamed profile mounted
-11,538 files, verified the pinned 1.20 executable and supporting module, and
-rendered the game's startup settings. Clicking Play with movies disabled
-produced black output and logged `D3D11: a render target drawn on the GPU
-could not be read back`. Enabling the launcher's CustomDDraw / Nothing option
-also produced black output and the same readback diagnostic. No JavaScript
-exception, failed asset request or WebGPU validation error was observed.
-The OPFS game directory remained empty. This is not a browser gameplay pass;
-the browser backend's unsupported GPU readback path remains a concrete blocker.
-Folder import and save/reload were not separately rerun for Siege.
+A Windows/Chromium 145 hardware-WebGPU streamed run mounts 11,538 files,
+verifies the pinned 1.20 executable and supporting module, and reaches the
+first castle map with movies disabled. Desktop mouse input completes the
+opening dialogue, moves the player, opens/closes the chest inventory, and
+navigates the original save/load menus. A named save creates its SAV, MAP,
+IDX and screenshot files in the writable OPFS profile; loading it returns
+to the rendered world in the same session. The named save also survives a
+player-page reload and loads in the final rebuilt player. No JavaScript
+exception, failed asset request, readback failure or WebGPU validation error occurs.
 
-All ten portable project tests pass with the MinGW runtime on PATH. Historical
-Windows/macOS/iPad gameplay results do not establish browser compatibility.
-Private build logs, screenshots and browser diagnostics stay ignored.
+This also exposed a second browser blocker: offscreen DirectDraw blits
+accumulated in recorder frame 1 while D3D11 presented complete window images.
+The kit now retires consumed blit records at that boundary while preserving
+pending Direct3D draw snapshots. Wasm memory stays at 2,253,193,216 bytes
+through the first map, dialogue, chest, movement and save/load, instead of
+climbing to the 4 GB limit and aborting. The DirectX suite passes 142,104
+checks and the host suite passes 3,908,091 checks, including retirement,
+source-lease release, arena reuse and pending-draw preservation.
+
+Touch-only menu activation was unreliable in this check; desktop mouse input
+was used for the completed flow. These are bounded first-map checks. Full
+campaigns, audible output, other browsers, folder import for Siege and save durability
+across browser restarts are not established. The observed castle frame rate
+varies roughly 25-50 FPS; this is not a performance benchmark. The game still
+uses substantial browser memory. Original game files and player profiles
+are preserved; only disposable browser profiles were used.
+
+All ten portable project tests pass with the MinGW runtime on PATH. Private
+build logs, screenshots and browser diagnostics remain ignored. Historical
+native/device results were not all rerun for this browser update.

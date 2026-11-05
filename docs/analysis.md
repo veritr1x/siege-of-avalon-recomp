@@ -6705,3 +6705,18 @@ currently lacks the synchronous readback this path needs. Browser gameplay
 and save/reload are not established. Ten portable game tests pass with the
 MinGW runtime on PATH. See [web.md](web.md) for setup and bounded evidence;
 earlier native/device results above remain historical.
+
+
+## 2026-11-05 browser GPU readback and recorder retirement
+
+Shared kit `9dff77f` supersedes the browser blockers in the preceding entry.
+Worker-safe WebGPU readback and preserved transfer rectangles restore the
+first castle map, opening dialogue, chest inventory and desktop movement.
+A second abort was traced to offscreen DirectDraw coverage records retained
+in frame 1 across D3D11 window presents. Retiring consumed blit-only records
+keeps Wasm memory at 2,253,193,216 bytes through the first-map check; pending
+Direct3D draws retain their normal lifetime. The original save/load UI creates
+and reloads a named OPFS save in-session and after a player-page reload. No GPU
+validation error or JavaScript exception occurs. Browser-process restart
+durability and full campaigns remain
+unverified. See [web.md](web.md) for bounded results and reproducible setup.

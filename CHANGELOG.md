@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Pin kit `9dff77f` for browser GPU readback, preserved transfer rectangles
+  and bounded DirectDraw records during complete window presents. Restore
+  the first map, dialogue, chest, movement and save/load UI; document browser
+  coverage and remaining limits in `docs/web.md`.
+
 - Update recomp-kit to `1cbd81c` for optional browser asset streaming, the
   corrected bounded fetch backend and fixed-function WebGPU shader fixes.
   Preserve folder import and OPFS profiles; document browser validation.
